@@ -1,2 +1,14 @@
 //! Effect IR: the shared vocabulary between the card compiler and the rules
-//! engine. Pure data types, no logic. Leaf crate.
+//! engine. Pure data types plus small parsing helpers. Leaf crate.
+
+pub mod ability;
+pub mod compiled;
+pub mod effect;
+pub mod mana;
+pub mod types;
+
+pub use ability::*;
+pub use compiled::*;
+pub use effect::*;
+pub use mana::*;
+pub use types::*;
