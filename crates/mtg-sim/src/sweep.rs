@@ -196,6 +196,23 @@ pub fn run_hand_sweep(
         .par_iter()
         .enumerate()
         .map(|(hi, hand)| {
+            if cfg
+                .cancel
+                .as_ref()
+                .map(|c| c.load(Ordering::Relaxed))
+                .unwrap_or(false)
+            {
+                return (
+                    HandOutcome {
+                        cards: hand.cards.clone(),
+                        probability: hand.probability,
+                        games: 0,
+                        wins: 0,
+                        draws: 0,
+                    },
+                    0,
+                );
+            }
             let forced: Vec<mtg_engine::CardRef> = hand
                 .cards
                 .iter()

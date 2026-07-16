@@ -1,0 +1,26 @@
+[package]
+name = "tolaria-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tolaria-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+mtg-data.workspace = true
+mtg-ir.workspace = true
+mtg-cards.workspace = true
+mtg-engine.workspace = true
+mtg-sim.workspace = true
+mtg-stats.workspace = true
+mtg-sources.workspace = true
+mtg-tui.workspace = true

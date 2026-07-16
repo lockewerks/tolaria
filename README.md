@@ -55,6 +55,22 @@ tolaria                                        # the TUI
 
 Simulations are deterministic per seed. Same seed, same carnage.
 
+## Desktop app
+
+A Tauri v2 desktop UI lives in `crates/tolaria-desktop`: deck manager with a
+per-card coverage inspector, run configurator for all four modes, live
+progress with cancel, results with charts and drill-ins, meta browser, and
+persisted run history. Build it with:
+
+```
+cd crates/tolaria-desktop/ui && npm install && npm run build
+cargo build --release -p tolaria-desktop
+target\release\tolaria-desktop.exe
+```
+
+Requires Node 18+ for the frontend build and WebView2 (ships with Windows
+11). The CLI below remains the headless interface.
+
 ## Commands
 
 Card data downloads automatically on first use and refreshes when Scryfall

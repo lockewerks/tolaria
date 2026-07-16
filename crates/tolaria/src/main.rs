@@ -255,6 +255,7 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: u64) -> Result<
         floor: games,
         early_stop: false,
         precision_target: None,
+        cancel: None,
         master_seed: seed,
         rules: mtg_engine::RulesConfig::commander_pod(4),
     };
@@ -365,6 +366,7 @@ fn cmd_run(
         floor: if auto { 1000.min(games) } else { 200.min(games) },
         early_stop,
         precision_target: auto.then_some(precision / 100.0),
+        cancel: None,
         master_seed: seed,
         rules,
     };
@@ -478,6 +480,7 @@ fn cmd_duel(
         floor: if auto { 1000.min(games) } else { 200.min(games) },
         early_stop,
         precision_target: auto.then_some(precision / 100.0),
+        cancel: None,
         master_seed: seed,
         rules: mtg_engine::RulesConfig::duel(),
     };

@@ -263,6 +263,7 @@ fn spawn_worker(
                 floor: 200.min(games),
                 early_stop: true,
                 precision_target: None,
+                cancel: None,
                 master_seed: seed,
                 rules: if is_commander {
                     mtg_engine::RulesConfig::commander_pod(2)

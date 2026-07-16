@@ -101,6 +101,8 @@ pub struct SimConfig {
     /// fraction (games_cap stays a hard ceiling). This is the "auto" mode:
     /// the matchup's own variance decides the sample size.
     pub precision_target: Option<f64>,
+    /// Cooperative cancellation: checked between game blocks and matchups.
+    pub cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     pub master_seed: u64,
     pub rules: RulesConfig,
 }
@@ -112,10 +114,20 @@ impl Default for SimConfig {
             floor: 200,
             early_stop: true,
             precision_target: None,
+            cancel: None,
             // "TOLARIA" in ASCII.
             master_seed: 0x544f4c41524941,
             rules: RulesConfig::duel(),
         }
+    }
+}
+
+impl SimConfig {
+    fn cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .map(|c| c.load(Ordering::Relaxed))
+            .unwrap_or(false)
     }
 }
 
@@ -169,6 +181,9 @@ pub fn run_matchup(
     let mut next_game = 0u32;
 
     while next_game < cfg.games_cap {
+        if cfg.cancelled() {
+            break;
+        }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
         let results: Vec<Option<(Option<u8>, u32, u8, u8)>> = (next_game..block_end)
             .into_par_iter()
@@ -287,6 +302,9 @@ pub fn run_pod(
     const BLOCK: u32 = 32;
     let mut next_game = 0u32;
     while next_game < cfg.games_cap {
+        if cfg.cancelled() {
+            break;
+        }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
         let results: Vec<Option<(Option<u8>, u32, u8)>> = (next_game..block_end)
             .into_par_iter()
@@ -378,6 +396,9 @@ pub fn run_gauntlet(
         matchups: Vec::new(),
     };
     for (i, opp) in opponents.iter().enumerate() {
+        if cfg.cancelled() {
+            break;
+        }
         let default_progress = Arc::new(MatchupProgress::default());
         let p = progress.get(i).unwrap_or(&default_progress);
         out.matchups.push(run_matchup(pool, user, opp, cfg, i as u64, p));
