@@ -282,6 +282,8 @@ pub enum Effect {
     GainControl { what: ObjSel, dur: Duration },
     /// Flip a transforming double-faced source.
     Transform,
+    /// Attach the source (aura or equipment) to a chosen target.
+    Attach { target: u8 },
     Custom(OverrideId),
     Noop,
 }

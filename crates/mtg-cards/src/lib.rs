@@ -2,5 +2,7 @@
 //! override registry, coverage grading, compiled cache.
 
 pub mod compiler;
+pub mod templates;
+pub mod text;
 
-pub use compiler::{compile, COMPILER_VERSION};
+pub use compiler::{compile, compile_pool, CoverageStats, COMPILER_VERSION};

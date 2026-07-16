@@ -111,6 +111,8 @@ pub enum StaticAbility {
     PtBuff { affects: AffectSpec, p: i32, t: i32 },
     /// Layer 6: keyword grants.
     GrantKeywords { affects: AffectSpec, kw: KeywordSet },
+    /// Auras and equipment buffing whatever they are attached to.
+    AttachedBuff { p: i32, t: i32, kw: KeywordSet },
     /// Cost changes for spells you or others cast. Negative delta reduces.
     SpellCostDelta { whose: Whose, filter: SpellFilter, delta: i16 },
     Custom(OverrideId),

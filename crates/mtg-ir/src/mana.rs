@@ -132,7 +132,8 @@ impl ManaCost {
                 return None;
             }
             let end = rest.find('}')?;
-            let tok = &rest[1..end];
+            let tok_upper = rest[1..end].to_ascii_uppercase();
+            let tok = tok_upper.as_str();
             rest = &rest[end + 1..];
             if let Ok(n) = tok.parse::<u16>() {
                 cost.generic += n;

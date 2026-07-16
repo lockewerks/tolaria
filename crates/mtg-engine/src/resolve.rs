@@ -721,6 +721,23 @@ pub fn exec(gs: &mut GameState, agents: &mut Agents, ctx: &mut Ctx, effect: &Eff
                 crate::layers::recompute_chars(gs);
             }
         }
+        Effect::Attach { target } => {
+            let src = ctx.source;
+            if gs.obj(src).zone != Zone::Battlefield {
+                return;
+            }
+            if let Some(Target::Obj(host, inc)) = ctx.targets.get(*target as usize).copied() {
+                if gs.obj(host).incarnation != inc || gs.obj(host).zone != Zone::Battlefield {
+                    return;
+                }
+                if let Some(old) = gs.obj(src).attached_to {
+                    gs.obj_mut(old).attachments.retain(|x| *x != src);
+                }
+                gs.obj_mut(src).attached_to = Some(host);
+                gs.obj_mut(host).attachments.push(src);
+                crate::layers::recompute_chars(gs);
+            }
+        }
         Effect::Custom(_) | Effect::Noop => {}
     }
 }

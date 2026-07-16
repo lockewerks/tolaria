@@ -95,14 +95,24 @@ pub fn recompute_chars(gs: &mut GameState) {
 
     // Layer 6: keyword grants from statics.
     for a in &statics {
-        if let StaticAbility::GrantKeywords { affects, kw } = &a.ability {
-            for &id in &battlefield {
-                if (affects.include_self || id != a.source)
-                    && obj_matches(gs, &affects.filter, id, a.controller, Some(a.source))
-                {
-                    gs.obj_mut(id).chars.keywords |= *kw;
+        match &a.ability {
+            StaticAbility::GrantKeywords { affects, kw } => {
+                for &id in &battlefield {
+                    if (affects.include_self || id != a.source)
+                        && obj_matches(gs, &affects.filter, id, a.controller, Some(a.source))
+                    {
+                        gs.obj_mut(id).chars.keywords |= *kw;
+                    }
                 }
             }
+            StaticAbility::AttachedBuff { kw, .. } if !kw.is_empty() => {
+                if let Some(host) = gs.obj(a.source).attached_to {
+                    if gs.obj(host).zone == Zone::Battlefield {
+                        gs.obj_mut(host).chars.keywords |= *kw;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -130,16 +140,28 @@ pub fn recompute_chars(gs: &mut GameState) {
 
     // Layer 7c: static P/T buffs.
     for a in &statics {
-        if let StaticAbility::PtBuff { affects, p, t } = &a.ability {
-            for &id in &battlefield {
-                if (affects.include_self || id != a.source)
-                    && obj_matches(gs, &affects.filter, id, a.controller, Some(a.source))
-                {
-                    let ch = &mut gs.obj_mut(id).chars;
-                    ch.power += p;
-                    ch.toughness += t;
+        match &a.ability {
+            StaticAbility::PtBuff { affects, p, t } => {
+                for &id in &battlefield {
+                    if (affects.include_self || id != a.source)
+                        && obj_matches(gs, &affects.filter, id, a.controller, Some(a.source))
+                    {
+                        let ch = &mut gs.obj_mut(id).chars;
+                        ch.power += p;
+                        ch.toughness += t;
+                    }
                 }
             }
+            StaticAbility::AttachedBuff { p, t, .. } if *p != 0 || *t != 0 => {
+                if let Some(host) = gs.obj(a.source).attached_to {
+                    if gs.obj(host).zone == Zone::Battlefield {
+                        let ch = &mut gs.obj_mut(host).chars;
+                        ch.power += p;
+                        ch.toughness += t;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
