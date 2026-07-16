@@ -43,6 +43,7 @@ pub struct MatchupStats {
     pub stopped_early: bool,
     /// 0 full .. 3 unplayable, worst tier fraction of the opponent list.
     pub opp_coverage_full_frac: f64,
+    pub opp_coverage_playable_frac: f64,
     pub opp_pilot_warning: bool,
 }
 

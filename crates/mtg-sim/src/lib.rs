@@ -152,6 +152,7 @@ pub fn run_matchup(
         opponent: opp.name.clone(),
         meta_share: opp.meta_share,
         opp_coverage_full_frac: coverages[1].full_frac(),
+        opp_coverage_playable_frac: coverages[1].playable_frac(),
         opp_pilot_warning: opp.pilot_warning,
         ..Default::default()
     };

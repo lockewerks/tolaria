@@ -177,6 +177,28 @@ pub fn resolve_deck(
     Ok(ResolvedDeck { name: fallback_name.to_string(), main, side, commander })
 }
 
+/// Resolve, dropping unresolvable names instead of failing. Returns the
+/// deck plus the list of dropped names.
+pub fn resolve_deck_lossy(
+    pool: &CardPool,
+    parsed: &ParsedDeck,
+    fallback_name: &str,
+) -> (Option<ResolvedDeck>, Vec<String>) {
+    let mut problems = Vec::new();
+    let main = resolve_names(pool, &parsed.main, &mut problems);
+    let side = resolve_names(pool, &parsed.side, &mut problems);
+    let commander = parsed.commanders.first().and_then(|c| pool.lookup(c));
+    let dropped: Vec<String> =
+        problems.iter().map(|p| p.trim().to_string()).collect();
+    if main.is_empty() {
+        return (None, dropped);
+    }
+    (
+        Some(ResolvedDeck { name: fallback_name.to_string(), main, side, commander }),
+        dropped,
+    )
+}
+
 pub fn load_deck_file(pool: &CardPool, path: &std::path::Path) -> Result<ResolvedDeck, crate::SourceError> {
     let text = std::fs::read_to_string(path)?;
     let parsed = parse_deck_text(&text);
