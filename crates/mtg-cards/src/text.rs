@@ -156,6 +156,13 @@ fn standalone_subtype(w: &str) -> Option<(CardTypes, &'static str)> {
     match w.trim_end_matches('s') {
         "aura" => Some((CardTypes::ENCHANTMENT, "aura")),
         "equipment" => Some((CardTypes::ARTIFACT, "equipment")),
+        // Basic land type words: "search ... for a mountain or island card".
+        "plain" => Some((CardTypes::LAND, "plains")),
+        "island" => Some((CardTypes::LAND, "island")),
+        "swamp" => Some((CardTypes::LAND, "swamp")),
+        "mountain" => Some((CardTypes::LAND, "mountain")),
+        "forest" => Some((CardTypes::LAND, "forest")),
+        "waste" => Some((CardTypes::LAND, "wastes")),
         _ => None,
     }
 }

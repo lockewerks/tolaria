@@ -820,10 +820,13 @@ dependencies = [
  "crossterm",
  "mtg-cards",
  "mtg-data",
+ "mtg-engine",
+ "mtg-ir",
  "mtg-sim",
  "mtg-sources",
  "mtg-stats",
  "ratatui",
+ "serde_json",
 ]
 
 [[package]]

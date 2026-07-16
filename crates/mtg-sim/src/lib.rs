@@ -234,6 +234,114 @@ pub fn run_matchup(
     stats
 }
 
+/// Four-player Commander pods: the user plus three opponents sampled from
+/// the meta by share. Win rate is seat 0's share of finished games; an even
+/// pod baseline is 25%.
+pub fn run_pod(
+    pool: &CardPool,
+    user: &SimDeck,
+    opponents: &[SimDeck],
+    cfg: &SimConfig,
+    progress: &MatchupProgress,
+) -> MatchupStats {
+    let old_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    let mut stats = MatchupStats {
+        opponent: format!("pods from {} decks", opponents.len()),
+        meta_share: 1.0,
+        ..Default::default()
+    };
+    progress.target.store(cfg.games_cap, Ordering::Relaxed);
+
+    // Cumulative shares for sampling opponents per game.
+    let total_share: f64 = opponents.iter().map(|o| o.meta_share.max(0.001)).sum();
+    let pick = |r: f64| -> &SimDeck {
+        let mut acc = 0.0;
+        for o in opponents {
+            acc += o.meta_share.max(0.001) / total_share;
+            if r <= acc {
+                return o;
+            }
+        }
+        opponents.last().unwrap()
+    };
+
+    const BLOCK: u32 = 32;
+    let mut next_game = 0u32;
+    while next_game < cfg.games_cap {
+        let block_end = (next_game + BLOCK).min(cfg.games_cap);
+        let results: Vec<Option<(Option<u8>, u32, u8)>> = (next_game..block_end)
+            .into_par_iter()
+            .map(|g| {
+                let seed = game_seed(cfg.master_seed, u64::MAX, g);
+                // Sample three opponents deterministically from the seed.
+                let mut s = seed;
+                let mut rand01 = || {
+                    s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    (s >> 11) as f64 / (1u64 << 53) as f64
+                };
+                let opps = [pick(rand01()), pick(rand01()), pick(rand01())];
+                let (db, lists, _) =
+                    build_db(pool, &[user, opps[0], opps[1], opps[2]]);
+                let setup = GameSetup {
+                    cfg: cfg.rules,
+                    first: Some((g % 4) as u8),
+                    trace: false,
+                };
+                let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                    let mut agents = Agents {
+                        seats: (0..4)
+                            .map(|_| Box::new(mtg_ai::GreedyAgent) as Box<dyn mtg_engine::Agent>)
+                            .collect(),
+                    };
+                    mtg_engine::run_game(db, &lists, &setup, &mut agents, seed)
+                }));
+                match out {
+                    Ok(o) => {
+                        let winner = match o.end {
+                            GameEnd::Winner(s) => Some(s),
+                            GameEnd::Draw => None,
+                        };
+                        Some((winner, o.turns, o.first))
+                    }
+                    Err(_) => None,
+                }
+            })
+            .collect();
+        for r in results {
+            stats.games += 1;
+            match r {
+                Some((winner, turns, first)) => {
+                    stats.turns_sum += turns as u64;
+                    if first == 0 {
+                        stats.on_play_games += 1;
+                    }
+                    match winner {
+                        Some(0) => {
+                            stats.wins += 1;
+                            if first == 0 {
+                                stats.on_play_wins += 1;
+                            }
+                        }
+                        Some(_) => stats.losses += 1,
+                        None => stats.draws += 1,
+                    }
+                }
+                None => {
+                    stats.panics += 1;
+                    stats.games -= 1;
+                }
+            }
+        }
+        progress.done.store(stats.games, Ordering::Relaxed);
+        progress.wins.store(stats.wins, Ordering::Relaxed);
+        next_game = block_end;
+    }
+    std::panic::set_hook(old_hook);
+    stats
+}
+
 /// Run the full gauntlet sequentially over matchups (each matchup is
 /// internally parallel). Progress is observable per matchup.
 pub fn run_gauntlet(

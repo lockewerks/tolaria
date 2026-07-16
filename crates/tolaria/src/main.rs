@@ -27,6 +27,15 @@ enum Command {
     },
     /// Compile the entire card pool and print the coverage histogram.
     Coverage,
+    /// Launch the interactive terminal UI (the default).
+    Tui {
+        #[arg(long)]
+        deck: Option<std::path::PathBuf>,
+        #[arg(long, default_value = "modern")]
+        format: String,
+        #[arg(long, default_value_t = 1000)]
+        games: u32,
+    },
     /// Sync tournament data and print the computed metagame.
     FetchMeta {
         /// Format: standard, pioneer, modern, legacy, vintage, pauper,
@@ -61,6 +70,18 @@ enum Command {
         json: Option<std::path::PathBuf>,
         #[arg(long)]
         no_early_stop: bool,
+    },
+    /// Simulate 4-player Commander pods against the EDHREC meta.
+    Pod {
+        /// Your Commander decklist file (Commander section or first card).
+        #[arg(long)]
+        deck: std::path::PathBuf,
+        #[arg(long, default_value_t = 250)]
+        games: u32,
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+        #[arg(long, default_value_t = 0x544f4c41524941)]
+        seed: u64,
     },
     /// Simulate one deck against another, both from decklist files.
     Duel {
@@ -101,27 +122,75 @@ fn main() -> Result<()> {
         Some(Command::Run { deck, format, games, days, top, seed, json, no_early_stop }) => {
             cmd_run(&deck, &format, games, days, top, seed, json.as_deref(), !no_early_stop)
         }
-        None => {
-            println!("TUI not built yet; try `tolaria fetch`");
-            Ok(())
-        }
+        Some(Command::Pod { deck, games, top, seed }) => cmd_pod(&deck, games, top, seed),
+        Some(Command::Tui { deck, format, games }) => launch_tui(deck, format, games),
+        None => launch_tui(None, "modern".to_string(), 1000),
     }
 }
 
-fn creature_count(pool: &mtg_data::CardPool, cards: &[(mtg_data::CardId, u8)]) -> u32 {
-    cards
-        .iter()
-        .filter(|(id, _)| {
-            pool.get(*id)
-                .front()
-                .types
-                .contains(mtg_ir::CardTypes::CREATURE)
-        })
-        .map(|(_, c)| *c as u32)
-        .sum()
+fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: u64) -> Result<()> {
+    let (pool, _) = load_pool(false, false)?;
+    let user = mtg_sources::load_deck_file(&pool, deck)?;
+    let mut user_sim = to_sim_deck(&user, 1.0);
+    if user_sim.commander.is_none() {
+        // Convention: the first card is the commander when no section says.
+        if let Some((first, _)) = user_sim.cards.first().copied() {
+            user_sim.commander = Some(first);
+            if let Some(slot) = user_sim.cards.iter_mut().find(|(id, _)| *id == first) {
+                slot.1 = slot.1.saturating_sub(1);
+            }
+            user_sim.cards.retain(|(_, c)| *c > 0);
+        }
+    }
+    let meta = load_meta(&pool, "commander", 60, top, true)?;
+    if meta.len() < 3 {
+        anyhow::bail!("need at least 3 commander meta decks");
+    }
+    print_meta(&meta);
+    let cfg = mtg_sim::SimConfig {
+        games_cap: games,
+        floor: games,
+        early_stop: false,
+        master_seed: seed,
+        rules: mtg_engine::RulesConfig::commander_pod(4),
+    };
+    let progress = std::sync::Arc::new(mtg_sim::MatchupProgress::default());
+    let started = std::time::Instant::now();
+    let stats = mtg_sim::run_pod(&pool, &user_sim, &meta, &cfg, &progress);
+    let elapsed = started.elapsed().as_secs_f64();
+    let (lo, hi) = stats.ci95();
+    println!(
+        "\n{} in 4-player pods: {} games in {:.1}s ({:.0} games/s)",
+        user_sim.name,
+        stats.games,
+        elapsed,
+        stats.games as f64 / elapsed.max(0.0001)
+    );
+    println!(
+        "seat win rate {:.1}% (95% CI {:.1}..{:.1}); even pod baseline is 25%",
+        stats.win_rate() * 100.0,
+        lo * 100.0,
+        hi * 100.0
+    );
+    println!(
+        "wins {} / losses {} / draws {} / panics {} / avg {:.1} turns",
+        stats.wins, stats.losses, stats.draws, stats.panics, stats.avg_turns()
+    );
+    Ok(())
 }
 
-/// Sync sources and compute the meta gauntlet for a format.
+fn launch_tui(deck: Option<std::path::PathBuf>, format: String, games: u32) -> Result<()> {
+    mtg_tui::run_tui(mtg_tui::TuiArgs {
+        deck,
+        format,
+        games,
+        days: 60,
+        top: 12,
+        seed: 0x544f4c41524941,
+    })
+}
+
+/// Sync sources and compute the meta gauntlet, printing status lines.
 fn load_meta(
     pool: &mtg_data::CardPool,
     format_str: &str,
@@ -129,128 +198,12 @@ fn load_meta(
     top: usize,
     verbose: bool,
 ) -> Result<Vec<mtg_sim::SimDeck>> {
-    let format = mtg_data::Format::parse(format_str)
-        .ok_or_else(|| anyhow::anyhow!("unknown format: {format_str}"))?;
-    let paths = mtg_data::Paths::resolve()?;
-    let agent = mtg_sources::http::agent(&mtg_data::default_user_agent());
-
-    if format == mtg_data::Format::Commander {
+    let mut status = |s: String| {
         if verbose {
-            println!("fetching top commanders from EDHREC...");
+            println!("{s}");
         }
-        let commanders = mtg_sources::edhrec::top_commanders(&agent, "year", top)?;
-        let total: u64 = commanders.iter().map(|c| c.num_decks.max(1)).sum();
-        let mut out = Vec::new();
-        for c in commanders {
-            let Ok(list) = mtg_sources::edhrec::average_deck(&agent, &c.slug) else { continue };
-            let parsed = mtg_sources::ParsedDeck {
-                name: Some(c.name.clone()),
-                main: list,
-                side: Vec::new(),
-                commanders: vec![c.name.clone()],
-            };
-            match mtg_sources::resolve_deck(pool, &parsed, &c.name) {
-                Ok(resolved) => {
-                    let creatures = creature_count(pool, &resolved.main);
-                    out.push(mtg_sim::SimDeck {
-                        name: c.name,
-                        cards: resolved.main,
-                        commander: resolved.commander,
-                        meta_share: c.num_decks as f64 / total as f64,
-                        pilot_warning: mtg_sources::meta::pilot_warning(creatures),
-                    });
-                }
-                Err(e) => {
-                    if verbose {
-                        println!("  skipping {}: {e}", c.name);
-                    }
-                }
-            }
-        }
-        return Ok(out);
-    }
-
-    // 60-card formats: tournament caches plus archetype rules.
-    let meta_dir = paths.meta_dir();
-    let cache_dir = meta_dir.join("fbettega");
-    let rules_dir = meta_dir.join("formatdata");
-    std::fs::create_dir_all(&cache_dir)?;
-
-    if !rules_dir.join("Formats").exists() {
-        if verbose {
-            println!("fetching archetype rules (MTGOFormatData)...");
-        }
-        mtg_sources::archetypes::fetch_format_rules(&agent, &rules_dir)?;
-    }
-
-    // Sync at most once every six hours.
-    let stamp = meta_dir.join("last-sync");
-    let stale = std::fs::metadata(&stamp)
-        .and_then(|m| m.modified())
-        .map(|t| t.elapsed().map(|e| e.as_secs() > 6 * 3600).unwrap_or(true))
-        .unwrap_or(true);
-    if stale {
-        if verbose {
-            println!("syncing tournament decklists (github: fbettega/MTG_decklistcache)...");
-        }
-        let (dl, total) = mtg_sources::tournaments::sync_cache(&agent, &cache_dir, days, |done, total| {
-            if verbose {
-                eprint!("\r  {done}/{total} files");
-            }
-        })?;
-        if verbose {
-            eprintln!("\r  {dl} new files ({total} in window)");
-        }
-        std::fs::write(&stamp, b"ok")?;
-    }
-
-    let rules = mtg_sources::archetypes::load_rules(&rules_dir, format)?;
-    if verbose {
-        println!(
-            "loaded {} archetype rules, {} fallbacks",
-            rules.archetypes.len(),
-            rules.fallbacks.len()
-        );
-    }
-    let decks = mtg_sources::tournaments::load_decks(&cache_dir, &format.to_string(), days)?;
-    if verbose {
-        println!("{} tournament decks in the last {days} days", decks.len());
-    }
-    let meta = mtg_sources::meta::build_meta(&rules, &decks, top);
-
-    let mut out = Vec::new();
-    for m in meta {
-        let entries: Vec<(String, u8)> = m.main.clone();
-        let parsed = mtg_sources::ParsedDeck {
-            name: Some(m.archetype.clone()),
-            main: entries,
-            side: Vec::new(),
-            commanders: Vec::new(),
-        };
-        let (resolved, dropped) =
-            mtg_sources::deck_import::resolve_deck_lossy(pool, &parsed, &m.archetype);
-        if verbose && !dropped.is_empty() {
-            println!("  {}: dropped {} unresolved names", m.archetype, dropped.len());
-        }
-        match resolved {
-            Some(resolved) => {
-                let creatures = creature_count(pool, &resolved.main);
-                out.push(mtg_sim::SimDeck {
-                    name: format!("{} ({} lists)", m.archetype, m.sample_size),
-                    cards: resolved.main,
-                    commander: None,
-                    meta_share: m.share,
-                    pilot_warning: mtg_sources::meta::pilot_warning(creatures),
-                });
-            }
-            None => {
-                if verbose {
-                    println!("  skipping {}: nothing resolved", m.archetype);
-                }
-            }
-        }
-    }
-    Ok(out)
+    };
+    mtg_tui::meta_loader::load_meta(pool, format_str, days, top, &mut status)
 }
 
 fn print_meta(meta: &[mtg_sim::SimDeck]) {
