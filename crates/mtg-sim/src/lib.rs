@@ -1,6 +1,8 @@
 //! Simulation harness: matchup scheduling, rayon parallelism, seed
 //! derivation, early stopping, panic isolation.
 
+pub mod sweep;
+
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -95,6 +97,10 @@ pub struct SimConfig {
     pub games_cap: u32,
     pub floor: u32,
     pub early_stop: bool,
+    /// When set, keep playing until the 95% CI half-width shrinks to this
+    /// fraction (games_cap stays a hard ceiling). This is the "auto" mode:
+    /// the matchup's own variance decides the sample size.
+    pub precision_target: Option<f64>,
     pub master_seed: u64,
     pub rules: RulesConfig,
 }
@@ -105,6 +111,7 @@ impl Default for SimConfig {
             games_cap: 1000,
             floor: 200,
             early_stop: true,
+            precision_target: None,
             // "TOLARIA" in ASCII.
             master_seed: 0x544f4c41524941,
             rules: RulesConfig::duel(),
@@ -157,7 +164,7 @@ pub fn run_matchup(
         ..Default::default()
     };
 
-    let setup = GameSetup { cfg: cfg.rules, first: None, trace: false };
+    let setup = GameSetup { cfg: cfg.rules, first: None, trace: false, forced_top: None };
     const BLOCK: u32 = 64;
     let mut next_game = 0u32;
 
@@ -225,7 +232,17 @@ pub fn run_matchup(
         progress.panics.store(stats.panics, Ordering::Relaxed);
 
         next_game = block_end;
-        if cfg.early_stop && early_stop_decided(stats.wins, stats.draws, stats.games, cfg.floor) {
+        let done = match cfg.precision_target {
+            Some(target) => {
+                stats.games >= cfg.floor
+                    && mtg_stats::ci_half_width(stats.wins, stats.draws, stats.games) <= target
+            }
+            None => {
+                cfg.early_stop
+                    && early_stop_decided(stats.wins, stats.draws, stats.games, cfg.floor)
+            }
+        };
+        if done {
             stats.stopped_early = true;
             progress.stopped.store(true, Ordering::Relaxed);
             break;
@@ -288,6 +305,7 @@ pub fn run_pod(
                     cfg: cfg.rules,
                     first: Some((g % 4) as u8),
                     trace: false,
+                    forced_top: None,
                 };
                 let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                     let mut agents = Agents {

@@ -27,6 +27,16 @@ pub fn early_stop_decided(wins: u32, draws: u32, games: u32, floor: u32) -> bool
     lo > 0.5 || hi < 0.5
 }
 
+/// Half the width of the 95% CI, in win-rate fraction.
+pub fn ci_half_width(wins: u32, draws: u32, games: u32) -> f64 {
+    if games == 0 {
+        return 0.5;
+    }
+    let effective_wins = wins as f64 + draws as f64 * 0.5;
+    let (lo, hi) = wilson(effective_wins, games as f64, 1.96);
+    (hi - lo) / 2.0
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MatchupStats {
     pub opponent: String,

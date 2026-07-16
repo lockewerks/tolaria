@@ -70,7 +70,8 @@ impl TestDb {
             DeckList { cards: vec![], commander: None },
             DeckList { cards: vec![], commander: None },
         ];
-        let setup = GameSetup { cfg: RulesConfig::duel(), first: Some(0), trace: false };
+        let setup =
+            GameSetup { cfg: RulesConfig::duel(), first: Some(0), trace: false, forced_top: None };
         mtg_engine::new_game(db, &decks, &setup, 99)
     }
 }

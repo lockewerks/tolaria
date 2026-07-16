@@ -56,9 +56,14 @@ enum Command {
         deck: std::path::PathBuf,
         #[arg(long, default_value = "modern")]
         format: String,
-        /// Games per matchup (early stopping may finish sooner).
-        #[arg(long, default_value_t = 1000)]
-        games: u32,
+        /// Games per matchup: a number (cap; a decided matchup may stop at
+        /// the 200-game floor) or "auto" (play until the CI is tighter than
+        /// --precision).
+        #[arg(long, default_value = "1000")]
+        games: String,
+        /// Auto mode target: CI half-width in percentage points.
+        #[arg(long, default_value_t = 1.0)]
+        precision: f64,
         #[arg(long, default_value_t = 60)]
         days: i64,
         #[arg(long, default_value_t = 12)]
@@ -68,6 +73,7 @@ enum Command {
         /// Write full results as JSON.
         #[arg(long)]
         json: Option<std::path::PathBuf>,
+        /// Play every requested game even after the result is decided.
         #[arg(long)]
         no_early_stop: bool,
     },
@@ -91,16 +97,36 @@ enum Command {
         /// The opposing decklist file.
         #[arg(long)]
         vs: std::path::PathBuf,
-        /// Games to simulate (early stopping may finish sooner).
-        #[arg(long, default_value_t = 1000)]
-        games: u32,
+        /// Games: a number (cap) or "auto" (play until the CI is tighter
+        /// than --precision).
+        #[arg(long, default_value = "1000")]
+        games: String,
+        /// Auto mode target: CI half-width in percentage points.
+        #[arg(long, default_value_t = 1.0)]
+        precision: f64,
         /// Master seed; same seed reproduces identical results.
         #[arg(long, default_value_t = 0x544f4c41524941)]
         seed: u64,
         /// Disable early stopping.
         #[arg(long)]
         no_early_stop: bool,
+        /// Enumerate every distinct opening hand of your deck, exactly
+        /// weighted, with sampled continuations per hand.
+        #[arg(long)]
+        all_hands: bool,
+        /// Continuations per hand in --all-hands mode.
+        #[arg(long, default_value_t = 50)]
+        per_hand: u32,
     },
+}
+
+/// "auto" or a number. Auto returns a million-game ceiling; precision does
+/// the real stopping.
+fn parse_games(s: &str) -> Result<(u32, bool)> {
+    if s.eq_ignore_ascii_case("auto") {
+        return Ok((1_000_000, true));
+    }
+    Ok((s.parse::<u32>().map_err(|_| anyhow::anyhow!("--games takes a number or 'auto'"))?, false))
 }
 
 fn main() -> Result<()> {
@@ -110,18 +136,43 @@ fn main() -> Result<()> {
         Some(Command::Card { name }) => cmd_card(&name.join(" ")),
         Some(Command::Compile { name }) => cmd_compile(&name.join(" ")),
         Some(Command::Coverage) => cmd_coverage(),
-        Some(Command::Duel { deck, vs, games, seed, no_early_stop }) => {
-            cmd_duel(&deck, &vs, games, seed, !no_early_stop)
-        }
+        Some(Command::Duel {
+            deck,
+            vs,
+            games,
+            precision,
+            seed,
+            no_early_stop,
+            all_hands,
+            per_hand,
+        }) => cmd_duel(&deck, &vs, &games, precision, seed, !no_early_stop, all_hands, per_hand),
         Some(Command::FetchMeta { format, days, top }) => {
             let (pool, _) = load_pool(false, false)?;
             let meta = load_meta(&pool, &format, days, top, true)?;
             print_meta(&meta);
             Ok(())
         }
-        Some(Command::Run { deck, format, games, days, top, seed, json, no_early_stop }) => {
-            cmd_run(&deck, &format, games, days, top, seed, json.as_deref(), !no_early_stop)
-        }
+        Some(Command::Run {
+            deck,
+            format,
+            games,
+            precision,
+            days,
+            top,
+            seed,
+            json,
+            no_early_stop,
+        }) => cmd_run(
+            &deck,
+            &format,
+            &games,
+            precision,
+            days,
+            top,
+            seed,
+            json.as_deref(),
+            !no_early_stop,
+        ),
         Some(Command::Pod { deck, games, top, seed }) => cmd_pod(&deck, games, top, seed),
         Some(Command::Tui { deck, format, games }) => launch_tui(deck, format, games),
         None => launch_tui(None, "modern".to_string(), 1000),
@@ -151,6 +202,7 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: u64) -> Result<
         games_cap: games,
         floor: games,
         early_stop: false,
+        precision_target: None,
         master_seed: seed,
         rules: mtg_engine::RulesConfig::commander_pod(4),
     };
@@ -222,13 +274,15 @@ fn print_meta(meta: &[mtg_sim::SimDeck]) {
 fn cmd_run(
     deck: &std::path::Path,
     format: &str,
-    games: u32,
+    games_str: &str,
+    precision: f64,
     days: i64,
     top: usize,
     seed: u64,
     json: Option<&std::path::Path>,
     early_stop: bool,
 ) -> Result<()> {
+    let (games, auto) = parse_games(games_str)?;
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
     let is_commander = mtg_data::Format::parse(format) == Some(mtg_data::Format::Commander);
@@ -256,8 +310,9 @@ fn cmd_run(
     };
     let cfg = mtg_sim::SimConfig {
         games_cap: games,
-        floor: 200.min(games),
+        floor: if auto { 1000.min(games) } else { 200.min(games) },
         early_stop,
+        precision_target: auto.then_some(precision / 100.0),
         master_seed: seed,
         rules,
     };
@@ -313,6 +368,7 @@ fn cmd_run(
             avg_cov * 100.0
         );
     }
+    explain_stopping(&stats.matchups, games, auto, precision, early_stop);
 
     if let Some(path) = json {
         std::fs::write(path, serde_json::to_vec_pretty(&stats)?)?;
@@ -331,13 +387,18 @@ fn to_sim_deck(d: &mtg_sources::ResolvedDeck, share: f64) -> mtg_sim::SimDeck {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_duel(
     deck: &std::path::Path,
     vs: &std::path::Path,
-    games: u32,
+    games_str: &str,
+    precision: f64,
     seed: u64,
     early_stop: bool,
+    all_hands: bool,
+    per_hand: u32,
 ) -> Result<()> {
+    let (games, auto) = parse_games(games_str)?;
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
     let opp = mtg_sources::load_deck_file(&pool, vs)?;
@@ -362,11 +423,17 @@ fn cmd_duel(
 
     let cfg = mtg_sim::SimConfig {
         games_cap: games,
-        floor: 200.min(games),
+        floor: if auto { 1000.min(games) } else { 200.min(games) },
         early_stop,
+        precision_target: auto.then_some(precision / 100.0),
         master_seed: seed,
         rules: mtg_engine::RulesConfig::duel(),
     };
+
+    if all_hands {
+        return run_sweep(&pool, &user_sim, &opp_sim, &cfg, per_hand);
+    }
+
     let progress = std::sync::Arc::new(mtg_sim::MatchupProgress::default());
     let started = std::time::Instant::now();
     let stats = mtg_sim::run_matchup(&pool, &user_sim, &opp_sim, &cfg, 0, &progress);
@@ -381,11 +448,10 @@ fn cmd_duel(
         stats.games as f64 / elapsed
     );
     println!(
-        "win rate {:.1}% (95% CI {:.1}%..{:.1}%){}",
+        "win rate {:.1}% (95% CI {:.1}%..{:.1}%)",
         stats.win_rate() * 100.0,
         lo * 100.0,
         hi * 100.0,
-        if stats.stopped_early { " [early stop]" } else { "" }
     );
     println!(
         "wins {} / losses {} / draws {} / panics {}",
@@ -397,6 +463,104 @@ fn cmd_duel(
         stats.on_draw_rate() * 100.0,
         stats.avg_turns()
     );
+    explain_stopping(&[stats], games, auto, precision, early_stop);
+    Ok(())
+}
+
+/// Say plainly why fewer games than requested were played.
+fn explain_stopping(
+    matchups: &[mtg_stats::MatchupStats],
+    cap: u32,
+    auto: bool,
+    precision: f64,
+    early_stop: bool,
+) {
+    let stopped: usize = matchups.iter().filter(|m| m.stopped_early).count();
+    if stopped == 0 {
+        return;
+    }
+    if auto {
+        println!(
+            "{stopped} matchup(s) reached the +/-{precision:.1}% precision target before the \
+             {cap}-game ceiling."
+        );
+    } else if early_stop {
+        println!(
+            "{stopped} matchup(s) stopped early: the 95% CI cleared 50%, so more games would \
+             not change the verdict. Pass --no-early-stop to play all {cap}, or --games auto \
+             to target a precision instead."
+        );
+    }
+}
+
+fn run_sweep(
+    pool: &mtg_data::CardPool,
+    user: &mtg_sim::SimDeck,
+    opp: &mtg_sim::SimDeck,
+    cfg: &mtg_sim::SimConfig,
+    per_hand: u32,
+) -> Result<()> {
+    let n_hands = mtg_sim::sweep::count_hands(&user.cards, 7);
+    println!(
+        "\n{} has {} distinct opening hands; {} continuations each = {} games",
+        user.name,
+        n_hands,
+        per_hand,
+        n_hands.saturating_mul(per_hand as u128)
+    );
+    if n_hands as usize > mtg_sim::sweep::MAX_SWEEP_HANDS {
+        anyhow::bail!(
+            "{} distinct hands is past the sweep limit ({}). Singleton decks explode \
+             combinatorially; use Monte Carlo (--games auto) instead.",
+            n_hands,
+            mtg_sim::sweep::MAX_SWEEP_HANDS
+        );
+    }
+    let progress = std::sync::Arc::new(mtg_sim::MatchupProgress::default());
+    let started = std::time::Instant::now();
+    let sweep = mtg_sim::sweep::run_hand_sweep(pool, user, opp, cfg, per_hand, &progress);
+    let elapsed = started.elapsed().as_secs_f64();
+    let (lo, hi) = sweep.ci95();
+    println!(
+        "swept {} hands, {} games in {:.1}s ({:.0} games/s), {} panics",
+        sweep.distinct_hands,
+        sweep.total_games,
+        elapsed,
+        sweep.total_games as f64 / elapsed.max(0.0001),
+        sweep.panics
+    );
+    println!(
+        "hand-exact weighted win rate: {:.2}% (95% CI {:.2}%..{:.2}%)",
+        sweep.weighted_win_rate * 100.0,
+        lo * 100.0,
+        hi * 100.0
+    );
+
+    let mut ranked: Vec<&mtg_sim::sweep::HandOutcome> = sweep.hands.iter().collect();
+    ranked.sort_by(|a, b| a.win_rate().partial_cmp(&b.win_rate()).unwrap());
+    let fmt_hand = |h: &mtg_sim::sweep::HandOutcome| -> String {
+        let cards: Vec<String> = h
+            .cards
+            .iter()
+            .map(|(id, n)| {
+                let name = &pool.get(*id).name;
+                if *n > 1 {
+                    format!("{n}x {name}")
+                } else {
+                    name.to_string()
+                }
+            })
+            .collect();
+        cards.join(", ")
+    };
+    println!("\nworst opening hands (dealt probability, win rate):");
+    for h in ranked.iter().take(5) {
+        println!("  {:>6.3}%  {:>5.1}%  {}", h.probability * 100.0, h.win_rate() * 100.0, fmt_hand(h));
+    }
+    println!("best opening hands:");
+    for h in ranked.iter().rev().take(5) {
+        println!("  {:>6.3}%  {:>5.1}%  {}", h.probability * 100.0, h.win_rate() * 100.0, fmt_hand(h));
+    }
     Ok(())
 }
 

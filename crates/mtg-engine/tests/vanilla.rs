@@ -83,7 +83,8 @@ fn bear_setup() -> (Arc<CardDb>, DeckList) {
 
 fn run(seed: u64, a: Box<dyn mtg_engine::Agent>, b: Box<dyn mtg_engine::Agent>) -> mtg_engine::GameOutcome {
     let (db, deck) = bear_setup();
-    let setup = GameSetup { cfg: RulesConfig::duel(), first: Some(0), trace: false };
+    let setup =
+        GameSetup { cfg: RulesConfig::duel(), first: Some(0), trace: false, forced_top: None };
     let mut agents = Agents { seats: vec![a, b] };
     mtg_engine::run_game(db, &[deck.clone(), deck], &setup, &mut agents, seed)
 }

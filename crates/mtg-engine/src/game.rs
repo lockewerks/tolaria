@@ -24,6 +24,10 @@ pub struct GameSetup {
     /// None: the seed decides who goes first.
     pub first: Option<Seat>,
     pub trace: bool,
+    /// Force seat 0's opening seven: these cards are placed on top of the
+    /// library after the shuffle (hand-sweep enumeration). Mulligans still
+    /// apply; this conditions on the dealt hand, not the kept one.
+    pub forced_top: Option<Vec<CardRef>>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +81,25 @@ pub fn new_game(
             gs.obj_mut(id).flags |= ObjFlags::IS_COMMANDER;
         }
         zones::shuffle_library(&mut gs, seat);
+    }
+
+    // Stack seat 0's opening hand on top (library top is the vec's end).
+    // The last `placed` slots hold already-positioned cards; each wanted
+    // card is pulled from the unplaced region and pushed on top.
+    if let Some(forced) = &setup.forced_top {
+        let mut placed = 0usize;
+        for &want in forced {
+            let lib = &gs.players[0].library;
+            let searchable = lib.len() - placed;
+            if let Some(pos) = lib[..searchable]
+                .iter()
+                .position(|&id| gs.objects[id.0 as usize].card == want)
+            {
+                let id = gs.players[0].library.remove(pos);
+                gs.players[0].library.push(id);
+                placed += 1;
+            }
+        }
     }
     gs
 }
