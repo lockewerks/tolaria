@@ -11,3 +11,6 @@ bitflags.workspace = true
 indexmap.workspace = true
 rand.workspace = true
 rand_pcg.workspace = true
+
+[dev-dependencies]
+mtg-cards.workspace = true

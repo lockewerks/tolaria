@@ -756,6 +756,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "indexmap",
+ "mtg-cards",
  "mtg-data",
  "mtg-ir",
  "rand",
