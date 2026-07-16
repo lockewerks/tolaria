@@ -195,7 +195,11 @@ pub fn run_matchup(
     };
 
     let setup = GameSetup { cfg: cfg.rules, first: None, trace: false, forced_top: None };
-    const BLOCK: u32 = 64;
+    // Block size trades early-stop granularity for fewer rayon barriers.
+    // At 32 threads and roughly a millisecond per game, 256 keeps the pool
+    // saturated; the first stop check still lands right after the 200-game
+    // floor.
+    const BLOCK: u32 = 256;
     let mut next_game = 0u32;
 
     while next_game < cfg.games_cap {
