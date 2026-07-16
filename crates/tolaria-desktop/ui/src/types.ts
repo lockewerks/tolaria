@@ -138,6 +138,7 @@ export interface RunResult {
   sweep: SweepDto | null;
   pod: MatchupStats | null;
   goldfish: GoldfishStats | null;
+  seed: number;
 }
 
 export interface RunMeta {

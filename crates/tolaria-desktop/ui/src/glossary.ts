@@ -50,7 +50,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   seed: {
     title: "Seed",
-    text: "The master random seed. Every shuffle and decision derives from it deterministically: the same seed with the same decks reproduces identical results, game for game.",
+    text: "The master random seed. Every shuffle and decision derives from it deterministically: the same seed with the same decks reproduces identical results, game for game. Left blank, a fresh seed is rolled from OS entropy and recorded with the results, so interesting runs stay reproducible. Random archetype draws are the one thing a seed does not pin down.",
     group: "Setup",
   },
   window: {

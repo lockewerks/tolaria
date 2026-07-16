@@ -37,8 +37,9 @@ struct TopArgs {
     /// Draw archetypes at random from the eligible universe.
     #[arg(long)]
     random: bool,
-    #[arg(long, default_value_t = 0x544f4c41524941)]
-    seed: u64,
+    /// Master seed; omit for a fresh random seed (printed for reproduction).
+    #[arg(long)]
+    seed: Option<u64>,
     /// Write full results as JSON.
     #[arg(long)]
     json: Option<std::path::PathBuf>,
@@ -73,8 +74,10 @@ enum Command {
         deck: std::path::PathBuf,
         #[arg(long, default_value_t = 1000)]
         games: u32,
-        #[arg(long, default_value_t = 0x544f4c41524941)]
-        seed: u64,
+        /// Master seed; omit for a fresh random seed (printed for
+        /// reproduction).
+        #[arg(long)]
+        seed: Option<u64>,
     },
     /// Sync tournament data and print the computed metagame.
     FetchMeta {
@@ -116,8 +119,10 @@ enum Command {
         /// Draw archetypes at random from the eligible universe.
         #[arg(long)]
         random: bool,
-        #[arg(long, default_value_t = 0x544f4c41524941)]
-        seed: u64,
+        /// Master seed; omit for a fresh random seed (printed for
+        /// reproduction).
+        #[arg(long)]
+        seed: Option<u64>,
         /// Write full results as JSON.
         #[arg(long)]
         json: Option<std::path::PathBuf>,
@@ -134,8 +139,10 @@ enum Command {
         games: u32,
         #[arg(long, default_value_t = 10)]
         top: usize,
-        #[arg(long, default_value_t = 0x544f4c41524941)]
-        seed: u64,
+        /// Master seed; omit for a fresh random seed (printed for
+        /// reproduction).
+        #[arg(long)]
+        seed: Option<u64>,
     },
     /// Simulate one deck against another, both from decklist files.
     Duel {
@@ -153,8 +160,10 @@ enum Command {
         #[arg(long, default_value_t = 1.0)]
         precision: f64,
         /// Master seed; same seed reproduces identical results.
-        #[arg(long, default_value_t = 0x544f4c41524941)]
-        seed: u64,
+        /// Master seed; omit for a fresh random seed (printed for
+        /// reproduction).
+        #[arg(long)]
+        seed: Option<u64>,
         /// Disable early stopping.
         #[arg(long)]
         no_early_stop: bool,
@@ -166,6 +175,19 @@ enum Command {
         #[arg(long, default_value_t = 50)]
         per_hand: u32,
     },
+}
+
+/// Use the given seed, or roll fresh entropy and say so. Masked to 53 bits
+/// to match what the desktop app can round-trip through JavaScript.
+fn resolve_seed(seed: Option<u64>) -> u64 {
+    match seed {
+        Some(s) => s,
+        None => {
+            let s = rand::random::<u64>() & ((1u64 << 53) - 1);
+            println!("master seed: {s} (pass --seed {s} to reproduce this run)");
+            s
+        }
+    }
 }
 
 /// "auto" or a number. Auto returns a million-game ceiling; precision does
@@ -248,7 +270,8 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: u64) -> Result<()> {
+fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: Option<u64>) -> Result<()> {
+    let seed = resolve_seed(seed);
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
     let mut user_sim = to_sim_deck(&user, 1.0);
@@ -324,7 +347,8 @@ fn launch_desktop() -> Result<()> {
     }
 }
 
-fn cmd_goldfish(deck: &std::path::Path, games: u32, seed: u64) -> Result<()> {
+fn cmd_goldfish(deck: &std::path::Path, games: u32, seed: Option<u64>) -> Result<()> {
+    let seed = resolve_seed(seed);
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
     let user_sim = to_sim_deck(&user, 1.0);
@@ -414,10 +438,11 @@ fn cmd_run(
     days: i64,
     top: &str,
     random: bool,
-    seed: u64,
+    seed: Option<u64>,
     json: Option<&std::path::Path>,
     early_stop: bool,
 ) -> Result<()> {
+    let seed = resolve_seed(seed);
     let (games, auto) = parse_games(games_str)?;
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
@@ -531,11 +556,12 @@ fn cmd_duel(
     vs: &std::path::Path,
     games_str: &str,
     precision: f64,
-    seed: u64,
+    seed: Option<u64>,
     early_stop: bool,
     all_hands: bool,
     per_hand: u32,
 ) -> Result<()> {
+    let seed = resolve_seed(seed);
     let (games, auto) = parse_games(games_str)?;
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;

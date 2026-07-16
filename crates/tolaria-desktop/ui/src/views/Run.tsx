@@ -211,7 +211,7 @@ export function RunView({
             ) : null}
             <label className="field">
               <span className="cap">
-                <Tip k="seed">seed (blank = TOLARIA; same seed, same carnage)</Tip>
+                <Tip k="seed">seed (blank = fresh random; shown in results to reproduce)</Tip>
               </span>
               <input type="text" value={seed} onChange={(e) => setSeed(e.target.value)} />
             </label>

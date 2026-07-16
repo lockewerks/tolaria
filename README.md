@@ -114,7 +114,7 @@ kill-by-turn percentages, and mulligan rates.
 |---|---|---|
 | `--deck <file>` | required | your decklist |
 | `--games <n>` | `1000` | games to play |
-| `--seed <n>` | `0x544f4c41524941` | master seed |
+| `--seed <n>` | random | master seed; omitted, a fresh one is rolled and printed |
 
 ### tolaria fetch
 
@@ -168,7 +168,7 @@ prints the worst-first table with confidence intervals and coverage.
 | `--days <n>` | `60` | trailing tournament window |
 | `--top <n\|all>` | `12` | gauntlet size; `all` fights every eligible archetype |
 | `--random` | off | draw the gauntlet at random from the eligible universe |
-| `--seed <n>` | `0x544f4c41524941` | master seed ("TOLARIA") |
+| `--seed <n>` | random | master seed; omitted, a fresh one is rolled and printed |
 | `--json <file>` | none | write full results as JSON |
 | `--no-early-stop` | off | play every requested game |
 
@@ -182,7 +182,7 @@ One deck against another, both from files.
 | `--vs <file>` | required | the opposing decklist |
 | `--games <n\|auto>` | `1000` | see above |
 | `--precision <pp>` | `1.0` | auto mode CI half-width |
-| `--seed <n>` | `0x544f4c41524941` | master seed |
+| `--seed <n>` | random | master seed; omitted, a fresh one is rolled and printed |
 | `--no-early-stop` | off | play every requested game |
 | `--all-hands` | off | exhaustive opening-hand sweep, see below |
 | `--per-hand <n>` | `50` | continuations per hand in sweep mode |
@@ -206,7 +206,7 @@ EDHREC meta by share, every game. An even pod baseline is 25%.
 | `--deck <file>` | required | your Commander decklist |
 | `--games <n>` | `250` | pods to play |
 | `--top <n>` | `10` | commander meta pool size |
-| `--seed <n>` | `0x544f4c41524941` | master seed |
+| `--seed <n>` | random | master seed; omitted, a fresh one is rolled and printed |
 
 The commander comes from a `Commander` section in the decklist, or the
 first card when no section names one.

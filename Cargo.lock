@@ -3810,6 +3810,7 @@ dependencies = [
  "mtg-sim",
  "mtg-sources",
  "mtg-stats",
+ "rand",
  "serde_json",
 ]
 
@@ -3825,6 +3826,7 @@ dependencies = [
  "mtg-sim",
  "mtg-sources",
  "mtg-stats",
+ "rand",
  "serde",
  "serde_json",
  "tauri",

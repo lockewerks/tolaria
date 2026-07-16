@@ -16,6 +16,7 @@ tauri = { version = "2", features = [] }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+rand.workspace = true
 mtg-data.workspace = true
 mtg-ir.workspace = true
 mtg-cards.workspace = true

@@ -102,6 +102,12 @@ fn default_selection() -> String {
     "top".into()
 }
 
+/// Fresh entropy, masked to 53 bits so the value survives the trip through
+/// JavaScript numbers and can be retyped to reproduce the run.
+fn roll_seed() -> u64 {
+    rand::random::<u64>() & ((1u64 << 53) - 1)
+}
+
 fn to_selection(kind: &str, n: usize) -> mtg_sim::meta_loader::MetaSelection {
     match kind {
         "random" => mtg_sim::meta_loader::MetaSelection::Random(n),
@@ -166,6 +172,9 @@ struct RunResult {
     pod: Option<mtg_stats::MatchupStats>,
     #[serde(default)]
     goldfish: Option<mtg_sim::goldfish::GoldfishStats>,
+    /// The master seed actually used (rolled when the user left it blank).
+    #[serde(default)]
+    seed: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -654,13 +663,14 @@ fn run_thread(
     } else {
         mtg_engine::RulesConfig::duel()
     };
+    let master_seed = config.seed.unwrap_or_else(roll_seed);
     let cfg = mtg_sim::SimConfig {
         games_cap: games,
         floor: if auto { 1000.min(games) } else { 200.min(games) },
         early_stop: config.early_stop,
         precision_target: auto.then_some(config.precision / 100.0),
         cancel: Some(cancel.clone()),
-        master_seed: config.seed.unwrap_or(0x544f4c41524941),
+        master_seed,
         rules,
     };
 
@@ -734,6 +744,7 @@ fn run_thread(
         sweep: None,
         pod: None,
         goldfish: None,
+        seed: master_seed,
     };
 
     match config.mode.as_str() {

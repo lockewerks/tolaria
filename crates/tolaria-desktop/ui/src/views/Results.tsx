@@ -291,6 +291,12 @@ export function ResultsView({ result }: { result: RunResult | null }) {
           average opponent coverage is {pct(avgCov, 0)}: treat absolute win rates with care
         </div>
       ) : null}
+      {result.seed ? (
+        <div className="hint" style={{ marginBottom: 10 }}>
+          <Tip k="seed">master seed</Tip> {result.seed}: enter it in the run setup to replay these
+          exact games
+        </div>
+      ) : null}
 
       {g ? (
         <>
