@@ -48,12 +48,141 @@ quietly wrong number.
 ## Quickstart
 
 ```
-tolaria fetch                                  # pull card data and the meta
-tolaria run --deck my_deck.txt --format modern # headless gauntlet
+tolaria fetch                                  # pull card data
+tolaria run --deck my_deck.txt --format modern # headless gauntlet vs the meta
 tolaria                                        # the TUI
 ```
 
 Simulations are deterministic per seed. Same seed, same carnage.
+
+## Commands
+
+Card data downloads automatically on first use and refreshes when Scryfall
+publishes a new bulk (about every 12 hours). Tournament data syncs at most
+once every six hours. Everything caches under the platform data directory
+(`%LOCALAPPDATA%\modusimagery\Tolaria` on Windows).
+
+Formats: `standard`, `pioneer`, `modern`, `legacy`, `vintage`, `pauper`,
+`commander` (also `edh`).
+
+### Game counts, early stopping, and auto
+
+`--games` takes a number or `auto`. A number is a ceiling, not a quota:
+after a 200-game floor, a matchup stops as soon as its 95% confidence
+interval clears 50%, since more games cannot change the verdict. The output
+says when and why this happened.
+
+- `--games 5000` plays up to 5000, stopping early once decided
+- `--games 5000 --no-early-stop` plays exactly 5000
+- `--games auto --precision 0.5` ignores fixed counts and plays until the
+  CI half-width is 0.5 percentage points (1000-game floor, million-game
+  ceiling)
+
+### tolaria / tolaria tui
+
+Launches the terminal UI. No subcommand does the same.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--deck <file>` | none | preload a decklist path |
+| `--format <name>` | `modern` | preload a format |
+| `--games <n>` | `1000` | games per matchup |
+
+### tolaria fetch
+
+Download or refresh the Scryfall card database.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--force` | off | recheck the manifest even if the local cache is fresh |
+
+### tolaria card <name>
+
+Print a card's oracle data (faces, types, text, legality). Multiple words
+work without quotes. Unresolved names get closest-match suggestions.
+
+### tolaria compile <name>
+
+Compile one card and print its coverage tier, dropped clauses, and parsed
+behaviors. The debugging window into the honesty clause.
+
+### tolaria coverage
+
+Compile the entire card pool and print the tier histogram.
+
+### tolaria fetch-meta
+
+Sync tournament data and print the computed metagame without simulating.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--format <name>` | `modern` | which meta to compute |
+| `--days <n>` | `60` | trailing tournament window |
+| `--top <n>` | `12` | archetypes to keep |
+
+### tolaria run
+
+Your deck against the format's meta gauntlet: syncs tournament data,
+classifies archetypes, builds consensus lists, simulates every matchup, and
+prints the worst-first table with confidence intervals and coverage.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--deck <file>` | required | your decklist |
+| `--format <name>` | `modern` | gauntlet format |
+| `--games <n\|auto>` | `1000` | per-matchup games, see above |
+| `--precision <pp>` | `1.0` | auto mode CI half-width, percentage points |
+| `--days <n>` | `60` | trailing tournament window |
+| `--top <n>` | `12` | gauntlet size |
+| `--seed <n>` | `0x544f4c41524941` | master seed ("TOLARIA") |
+| `--json <file>` | none | write full results as JSON |
+| `--no-early-stop` | off | play every requested game |
+
+### tolaria duel
+
+One deck against another, both from files.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--deck <file>` | required | your decklist |
+| `--vs <file>` | required | the opposing decklist |
+| `--games <n\|auto>` | `1000` | see above |
+| `--precision <pp>` | `1.0` | auto mode CI half-width |
+| `--seed <n>` | `0x544f4c41524941` | master seed |
+| `--no-early-stop` | off | play every requested game |
+| `--all-hands` | off | exhaustive opening-hand sweep, see below |
+| `--per-hand <n>` | `50` | continuations per hand in sweep mode |
+
+`--all-hands` enumerates every distinct opening seven your deck can be
+dealt, weights each by its exact hypergeometric probability, and plays
+`--per-hand` continuations per hand. Full deck-order enumeration is not a
+thing any computer will ever finish (a 60-card deck has on the order of
+10^63 orderings); the opener is where deal variance lives, and the opener
+is exactly enumerable. Output includes the weighted win rate with a
+stratified confidence interval plus your best and worst opening hands.
+Singleton decks exceed the sweep limit by design; use `--games auto` there.
+
+### tolaria pod
+
+Four-player Commander pods: you plus three opponents sampled from the
+EDHREC meta by share, every game. An even pod baseline is 25%.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--deck <file>` | required | your Commander decklist |
+| `--games <n>` | `250` | pods to play |
+| `--top <n>` | `10` | commander meta pool size |
+| `--seed <n>` | `0x544f4c41524941` | master seed |
+
+The commander comes from a `Commander` section in the decklist, or the
+first card when no section names one.
+
+### Decklist formats
+
+MTGA exports (`4 Lightning Bolt (M11) 133` with `Deck`, `Sideboard`,
+`Commander`, `Companion` sections), MTGO text (blank line starts the
+sideboard), and plain lists (`4x Lightning Bolt`). Comment lines start with
+`#` or `//`. Sideboards are parsed and ignored: simulations are game one.
 
 ## Data sources and thanks
 
