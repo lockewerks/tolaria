@@ -1,10 +1,11 @@
 [package]
-name = "mtgsim"
+name = "tolaria"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [[bin]]
-name = "mtgsim"
+name = "tolaria"
 path = "src/main.rs"
 
 [dependencies]

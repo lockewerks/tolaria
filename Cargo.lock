@@ -825,24 +825,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mtgsim"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "mtg-ai",
- "mtg-cards",
- "mtg-data",
- "mtg-engine",
- "mtg-ir",
- "mtg-sim",
- "mtg-sources",
- "mtg-stats",
- "mtg-tui",
- "serde_json",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1383,6 +1365,24 @@ checksum = "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
 dependencies = [
  "displaydoc",
  "zerovec",
+]
+
+[[package]]
+name = "tolaria"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "mtg-ai",
+ "mtg-cards",
+ "mtg-data",
+ "mtg-engine",
+ "mtg-ir",
+ "mtg-sim",
+ "mtg-sources",
+ "mtg-stats",
+ "mtg-tui",
+ "serde_json",
 ]
 
 [[package]]
