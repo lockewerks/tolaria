@@ -80,7 +80,9 @@ says when and why this happened.
 
 ### tolaria / tolaria tui
 
-Launches the terminal UI. No subcommand does the same.
+Bare `tolaria` launches the terminal UI. Bare `tolaria` with run flags is
+shorthand for `tolaria run`: `tolaria --deck x.txt --format vintage` runs
+the gauntlet headless with all the options listed under `run`.
 
 | Option | Default | Meaning |
 |---|---|---|

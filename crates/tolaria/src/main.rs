@@ -2,10 +2,45 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "tolaria", about = "Mass simulator for Magic: The Gathering decks")]
+#[command(
+    name = "tolaria",
+    about = "Mass simulator for Magic: The Gathering decks",
+    args_conflicts_with_subcommands = true
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+    #[command(flatten)]
+    top: TopArgs,
+}
+
+/// Flags accepted without a subcommand: `tolaria --deck x.txt` is shorthand
+/// for `tolaria run --deck x.txt`; with no flags at all, the TUI launches.
+#[derive(clap::Args)]
+struct TopArgs {
+    /// Your decklist file (runs the meta gauntlet headless).
+    #[arg(long)]
+    deck: Option<std::path::PathBuf>,
+    #[arg(long, default_value = "modern")]
+    format: String,
+    /// A number (cap with early stopping) or "auto".
+    #[arg(long, default_value = "1000")]
+    games: String,
+    /// Auto mode target: CI half-width in percentage points.
+    #[arg(long, default_value_t = 1.0)]
+    precision: f64,
+    #[arg(long, default_value_t = 60)]
+    days: i64,
+    #[arg(long, default_value_t = 12)]
+    top: usize,
+    #[arg(long, default_value_t = 0x544f4c41524941)]
+    seed: u64,
+    /// Write full results as JSON.
+    #[arg(long)]
+    json: Option<std::path::PathBuf>,
+    /// Play every requested game even after the result is decided.
+    #[arg(long)]
+    no_early_stop: bool,
 }
 
 #[derive(Subcommand)]
@@ -175,7 +210,24 @@ fn main() -> Result<()> {
         ),
         Some(Command::Pod { deck, games, top, seed }) => cmd_pod(&deck, games, top, seed),
         Some(Command::Tui { deck, format, games }) => launch_tui(deck, format, games),
-        None => launch_tui(None, "modern".to_string(), 1000),
+        None => {
+            let t = cli.top;
+            match t.deck {
+                // Flags without a subcommand mean a headless gauntlet run.
+                Some(deck) => cmd_run(
+                    &deck,
+                    &t.format,
+                    &t.games,
+                    t.precision,
+                    t.days,
+                    t.top,
+                    t.seed,
+                    t.json.as_deref(),
+                    !t.no_early_stop,
+                ),
+                None => launch_tui(None, t.format, t.games.parse().unwrap_or(1000)),
+            }
+        }
     }
 }
 
