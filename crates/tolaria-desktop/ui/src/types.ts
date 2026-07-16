@@ -75,7 +75,13 @@ export interface MatchupStats {
   win_reasons: number[];
   loss_reasons: number[];
   mull_hist: number[];
+  win_life_sum: number;
+  win_opp_life_sum: number;
+  loss_life_sum: number;
+  loss_opp_life_sum: number;
 }
+
+export const signed = (x: number, digits = 1) => `${x >= 0 ? "+" : ""}${x.toFixed(digits)}`;
 
 export interface GauntletStats {
   deck_name: string;

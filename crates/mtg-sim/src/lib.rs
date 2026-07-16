@@ -203,7 +203,7 @@ pub fn run_matchup(
             break;
         }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
-        let results: Vec<Option<(Option<u8>, u32, u8, u8, u8)>> = (next_game..block_end)
+        let results: Vec<Option<(Option<u8>, u32, u8, u8, u8, i32, i32)>> = (next_game..block_end)
             .into_par_iter()
             .map(|g| {
                 let seed = game_seed(cfg.master_seed, matchup_index, g);
@@ -236,6 +236,8 @@ pub fn run_matchup(
                             o.first,
                             o.mulligans.first().copied().unwrap_or(0),
                             reason,
+                            o.life.first().copied().unwrap_or(0),
+                            o.life.get(1).copied().unwrap_or(0),
                         ))
                     }
                     Err(_) => None,
@@ -246,7 +248,7 @@ pub fn run_matchup(
         for r in results {
             stats.games += 1;
             match r {
-                Some((winner, turns, first, my_mulls, reason)) => {
+                Some((winner, turns, first, my_mulls, reason, my_life, opp_life)) => {
                     stats.turns_sum += turns as u64;
                     stats.my_mulligans += my_mulls as u32;
                     stats.turn_hist[(turns as usize).saturating_sub(1).min(39)] += 1;
@@ -259,6 +261,8 @@ pub fn run_matchup(
                         Some(0) => {
                             stats.wins += 1;
                             stats.win_reasons[reason as usize] += 1;
+                            stats.win_life_sum += my_life as i64;
+                            stats.win_opp_life_sum += opp_life as i64;
                             if on_play {
                                 stats.on_play_wins += 1;
                             }
@@ -266,6 +270,8 @@ pub fn run_matchup(
                         Some(_) => {
                             stats.losses += 1;
                             stats.loss_reasons[reason as usize] += 1;
+                            stats.loss_life_sum += my_life as i64;
+                            stats.loss_opp_life_sum += opp_life as i64;
                         }
                         None => stats.draws += 1,
                     }
@@ -342,7 +348,7 @@ pub fn run_pod(
             break;
         }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
-        let results: Vec<Option<(Option<u8>, u32, u8)>> = (next_game..block_end)
+        let results: Vec<Option<(Option<u8>, u32, u8, i32)>> = (next_game..block_end)
             .into_par_iter()
             .map(|g| {
                 let seed = game_seed(cfg.master_seed, u64::MAX, g);
@@ -375,7 +381,7 @@ pub fn run_pod(
                             GameEnd::Winner(s) => Some(s),
                             GameEnd::Draw => None,
                         };
-                        Some((winner, o.turns, o.first))
+                        Some((winner, o.turns, o.first, o.life.first().copied().unwrap_or(0)))
                     }
                     Err(_) => None,
                 }
@@ -384,7 +390,7 @@ pub fn run_pod(
         for r in results {
             stats.games += 1;
             match r {
-                Some((winner, turns, first)) => {
+                Some((winner, turns, first, my_life)) => {
                     stats.turns_sum += turns as u64;
                     if first == 0 {
                         stats.on_play_games += 1;
@@ -392,11 +398,15 @@ pub fn run_pod(
                     match winner {
                         Some(0) => {
                             stats.wins += 1;
+                            stats.win_life_sum += my_life as i64;
                             if first == 0 {
                                 stats.on_play_wins += 1;
                             }
                         }
-                        Some(_) => stats.losses += 1,
+                        Some(_) => {
+                            stats.losses += 1;
+                            stats.loss_life_sum += my_life as i64;
+                        }
                         None => stats.draws += 1,
                     }
                 }

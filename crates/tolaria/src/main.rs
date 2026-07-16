@@ -570,6 +570,20 @@ fn cmd_duel(
         stats.on_draw_rate() * 100.0,
         stats.avg_turns()
     );
+    if stats.wins > 0 {
+        println!(
+            "your wins end with you at {:+.1} life, opponent at {:+.1}",
+            stats.avg_win_life(),
+            stats.avg_win_opp_life()
+        );
+    }
+    if stats.losses > 0 {
+        println!(
+            "your losses end with you at {:+.1} life, opponent at {:+.1}",
+            stats.avg_loss_life(),
+            stats.avg_loss_opp_life()
+        );
+    }
     explain_stopping(&[stats], games, auto, precision, early_stop);
     Ok(())
 }

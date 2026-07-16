@@ -68,6 +68,19 @@ pub struct MatchupStats {
     /// User mulligans per game: 0, 1, 2, 3+.
     #[serde(default)]
     pub mull_hist: Vec<u32>,
+    /// Sum of the user's final life across won games.
+    #[serde(default)]
+    pub win_life_sum: i64,
+    /// Sum of the opponent's final life across the user's wins. Negative
+    /// values are overkill: damage dealt past lethal.
+    #[serde(default)]
+    pub win_opp_life_sum: i64,
+    /// Sum of the user's final life across lost games.
+    #[serde(default)]
+    pub loss_life_sum: i64,
+    /// Sum of the opponent's final life across the user's losses.
+    #[serde(default)]
+    pub loss_opp_life_sum: i64,
 }
 
 impl MatchupStats {
@@ -106,6 +119,39 @@ impl MatchupStats {
             return 0.0;
         }
         self.turns_sum as f64 / self.games as f64
+    }
+
+    /// Your average final life in games you won.
+    pub fn avg_win_life(&self) -> f64 {
+        if self.wins == 0 {
+            return 0.0;
+        }
+        self.win_life_sum as f64 / self.wins as f64
+    }
+
+    /// The opponent's average final life in games you won. Negative on
+    /// damage kills: the average overkill.
+    pub fn avg_win_opp_life(&self) -> f64 {
+        if self.wins == 0 {
+            return 0.0;
+        }
+        self.win_opp_life_sum as f64 / self.wins as f64
+    }
+
+    /// Your average final life in games you lost.
+    pub fn avg_loss_life(&self) -> f64 {
+        if self.losses == 0 {
+            return 0.0;
+        }
+        self.loss_life_sum as f64 / self.losses as f64
+    }
+
+    /// The opponent's average final life in games you lost.
+    pub fn avg_loss_opp_life(&self) -> f64 {
+        if self.losses == 0 {
+            return 0.0;
+        }
+        self.loss_opp_life_sum as f64 / self.losses as f64
     }
 }
 

@@ -38,6 +38,9 @@ pub struct GameOutcome {
     pub first: Seat,
     pub mulligans: SmallVec<[u8; 4]>,
     pub losses: SmallVec<[Option<LossReason>; 4]>,
+    /// Final life per seat. Negative life on a damage kill is the overkill:
+    /// how far past dead the loser was driven.
+    pub life: SmallVec<[i32; 4]>,
     pub trace: Option<Vec<String>>,
 }
 
@@ -210,6 +213,7 @@ pub fn run_game(
         first,
         mulligans: gs.players.iter().map(|p| p.mulligans).collect(),
         losses: gs.players.iter().map(|p| p.lost).collect(),
+        life: gs.players.iter().map(|p| p.life).collect(),
         trace: gs.trace.take(),
     }
 }

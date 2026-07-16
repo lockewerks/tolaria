@@ -5,6 +5,7 @@ import {
   RunResult,
   ci95,
   pct,
+  signed,
   weightedWinRate,
   winRate,
 } from "../types";
@@ -162,6 +163,19 @@ function Drill({ m }: { m: MatchupStats }) {
               ? `, one mull ${mullHist[1] ?? 0}, two ${mullHist[2] ?? 0}, three or more ${mullHist[3] ?? 0}`
               : ""}
           </div>
+          {m.wins > 0 || m.losses > 0 ? (
+            <div className="hint">
+              <Tip k="margin">margins</Tip>:{" "}
+              {m.wins > 0
+                ? `your wins end with you at ${signed(m.win_life_sum / m.wins)} life, them at ${signed(m.win_opp_life_sum / m.wins)}`
+                : ""}
+              {m.wins > 0 && m.losses > 0 ? "; " : ""}
+              {m.losses > 0
+                ? `your losses end with you at ${signed(m.loss_life_sum / m.losses)}, them at ${signed(m.loss_opp_life_sum / m.losses)}`
+                : ""}{" "}
+              (<Tip k="overkill">negative = past dead</Tip>)
+            </div>
+          ) : null}
           <div className="hint">
             opponent list coverage: {pct(m.opp_coverage_playable_frac, 0)} playable (
             {pct(m.opp_coverage_full_frac, 0)} full)
@@ -227,6 +241,17 @@ export function ResultsView({ result }: { result: RunResult | null }) {
               tip={g.matchups.length > 1 ? "weighted" : "win-rate"}
             />
             <Stat value={g.matchups.reduce((a, m) => a + m.games, 0).toLocaleString()} label="games" />
+            {(() => {
+              const wins = g.matchups.reduce((a, m) => a + m.wins, 0);
+              const winLife = g.matchups.reduce((a, m) => a + (m.win_life_sum ?? 0), 0);
+              const oppLife = g.matchups.reduce((a, m) => a + (m.win_opp_life_sum ?? 0), 0);
+              return wins > 0 ? (
+                <>
+                  <Stat value={`${signed(winLife / wins)} life`} label="you win at" tip="margin" />
+                  <Stat value={`${signed(oppLife / wins)} life`} label="they end at" tip="overkill" />
+                </>
+              ) : null;
+            })()}
           </>
         ) : null}
         {s ? (
@@ -337,6 +362,8 @@ export function ResultsView({ result }: { result: RunResult | null }) {
           <div className="hint">
             {p.wins} wins, {p.losses} losses, {p.draws} draws over {p.games} four-player pods; average
             pod ran {matchupTurns(p).toFixed(1)} turns; opponents sampled from the EDHREC meta by share.
+            {p.wins > 0 ? ` Your wins end at ${signed(p.win_life_sum / p.wins)} life;` : ""}
+            {p.losses > 0 ? ` your losses end at ${signed(p.loss_life_sum / p.losses)}.` : ""}
           </div>
         </Panel>
       ) : null}

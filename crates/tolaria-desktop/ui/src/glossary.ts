@@ -133,6 +133,16 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     text: "Each mulligan redraws seven, then bottoms one card per mulligan taken. The agent keeps hands with two to five lands and a castable early spell.",
     group: "Results",
   },
+  margin: {
+    title: "Victory margin",
+    text: "Life totals when the game ended. Winning at +15 is a stomp; winning at +2 is a coin flip that landed your way. Both directions are shown: what your wins and your losses looked like at the end.",
+    group: "Results",
+  },
+  overkill: {
+    title: "Overkill",
+    text: "Negative final life on the loser: damage dealt past lethal. Dying at -6 means the killing blow was 6 more than needed. Wins by decking or poison leave the loser at positive life, which pulls this average up.",
+    group: "Results",
+  },
   panics: {
     title: "Panics",
     text: "Games where a card interaction crashed the engine. They are isolated, excluded from win rates, and counted here so reliability is visible. Zero is the expectation.",
