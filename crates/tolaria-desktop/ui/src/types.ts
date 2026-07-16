@@ -13,6 +13,12 @@ export interface CardRow {
   dropped: string[];
 }
 
+export interface FormatFit {
+  name: string;
+  legal_frac: number;
+  size_ok: boolean;
+}
+
 export interface DeckInfo {
   name: string;
   total: number;
@@ -25,6 +31,10 @@ export interface DeckInfo {
   colors: string;
   unresolved: string[];
   commander: string | null;
+  lands: number;
+  avg_mana_value: number;
+  formats: FormatFit[];
+  recommended: string;
 }
 
 export interface DeckFile {
@@ -61,6 +71,10 @@ export interface MatchupStats {
   opp_coverage_full_frac: number;
   opp_coverage_playable_frac: number;
   opp_pilot_warning: boolean;
+  turn_hist: number[];
+  win_reasons: number[];
+  loss_reasons: number[];
+  mull_hist: number[];
 }
 
 export interface GauntletStats {
@@ -87,6 +101,16 @@ export interface SweepDto {
   histogram: number[];
 }
 
+export interface GoldfishStats {
+  games: number;
+  kills: number;
+  no_kill: number;
+  panics: number;
+  kill_hist: number[];
+  mull_hist: number[];
+  avg_kill_turn: number;
+}
+
 export interface RunResult {
   kind: string;
   deck_name: string;
@@ -99,6 +123,7 @@ export interface RunResult {
   gauntlet: GauntletStats | null;
   sweep: SweepDto | null;
   pod: MatchupStats | null;
+  goldfish: GoldfishStats | null;
 }
 
 export interface RunMeta {

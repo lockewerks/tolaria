@@ -50,17 +50,19 @@ quietly wrong number.
 ```
 tolaria fetch                                  # pull card data
 tolaria run --deck my_deck.txt --format modern # headless gauntlet vs the meta
-tolaria                                        # the TUI
+tolaria                                        # the desktop app
 ```
 
 Simulations are deterministic per seed. Same seed, same carnage.
 
-## Desktop app
+## Desktop app (the default)
 
-A Tauri v2 desktop UI lives in `crates/tolaria-desktop`: deck manager with a
-per-card coverage inspector, run configurator for all four modes, live
-progress with cancel, results with charts and drill-ins, meta browser, and
-persisted run history. Build it with:
+The Tauri v2 desktop UI in `crates/tolaria-desktop` is the primary
+interface: deck manager with per-card coverage inspector, format-fit
+analysis with a best-fit recommendation, run configurator for all five
+modes, live progress with cancel, results with charts and per-matchup
+drill-ins (game length, end reasons, mulligans), meta browser, persisted
+run history, dwell tooltips on every term, and a glossary. Build it with:
 
 ```
 cd crates/tolaria-desktop/ui && npm install && npm run build
@@ -69,7 +71,8 @@ target\release\tolaria-desktop.exe
 ```
 
 Requires Node 18+ for the frontend build and WebView2 (ships with Windows
-11). The CLI below remains the headless interface.
+11). Bare `tolaria` launches the desktop app when the two binaries sit next
+to each other. The CLI below is the headless interface.
 
 ## Commands
 
@@ -94,17 +97,24 @@ says when and why this happened.
   CI half-width is 0.5 percentage points (1000-game floor, million-game
   ceiling)
 
-### tolaria / tolaria tui
+### tolaria
 
-Bare `tolaria` launches the terminal UI. Bare `tolaria` with run flags is
-shorthand for `tolaria run`: `tolaria --deck x.txt --format vintage` runs
-the gauntlet headless with all the options listed under `run`.
+Bare `tolaria` launches the desktop app when `tolaria-desktop.exe` sits
+next to it. Bare `tolaria` with run flags is shorthand for `tolaria run`:
+`tolaria --deck x.txt --format vintage` runs the gauntlet headless with all
+the options listed under `run`.
+
+### tolaria goldfish
+
+The deck against a passive opponent that never acts: pure speed and
+consistency, zero interaction, any deck size. Reports average kill turn,
+kill-by-turn percentages, and mulligan rates.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--deck <file>` | none | preload a decklist path |
-| `--format <name>` | `modern` | preload a format |
-| `--games <n>` | `1000` | games per matchup |
+| `--deck <file>` | required | your decklist |
+| `--games <n>` | `1000` | games to play |
+| `--seed <n>` | `0x544f4c41524941` | master seed |
 
 ### tolaria fetch
 

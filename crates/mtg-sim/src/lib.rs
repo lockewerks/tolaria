@@ -1,6 +1,8 @@
 //! Simulation harness: matchup scheduling, rayon parallelism, seed
 //! derivation, early stopping, panic isolation.
 
+pub mod goldfish;
+pub mod meta_loader;
 pub mod sweep;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -131,6 +133,18 @@ impl SimConfig {
     }
 }
 
+/// Index into win_reasons/loss_reasons: life, poison, deckout, commander,
+/// other.
+fn loss_reason_index(r: Option<mtg_engine::LossReason>) -> u8 {
+    match r {
+        Some(mtg_engine::LossReason::Life) => 0,
+        Some(mtg_engine::LossReason::Poison) => 1,
+        Some(mtg_engine::LossReason::DeckOut) => 2,
+        Some(mtg_engine::LossReason::CommanderDamage) => 3,
+        _ => 4,
+    }
+}
+
 fn splitmix64(mut x: u64) -> u64 {
     x = x.wrapping_add(0x9e3779b97f4a7c15);
     let mut z = x;
@@ -173,6 +187,10 @@ pub fn run_matchup(
         opp_coverage_full_frac: coverages[1].full_frac(),
         opp_coverage_playable_frac: coverages[1].playable_frac(),
         opp_pilot_warning: opp.pilot_warning,
+        turn_hist: vec![0; 40],
+        win_reasons: vec![0; 5],
+        loss_reasons: vec![0; 5],
+        mull_hist: vec![0; 4],
         ..Default::default()
     };
 
@@ -185,7 +203,7 @@ pub fn run_matchup(
             break;
         }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
-        let results: Vec<Option<(Option<u8>, u32, u8, u8)>> = (next_game..block_end)
+        let results: Vec<Option<(Option<u8>, u32, u8, u8, u8)>> = (next_game..block_end)
             .into_par_iter()
             .map(|g| {
                 let seed = game_seed(cfg.master_seed, matchup_index, g);
@@ -206,7 +224,19 @@ pub fn run_matchup(
                             GameEnd::Winner(s) => Some(s),
                             GameEnd::Draw => None,
                         };
-                        Some((winner, o.turns, o.first, o.mulligans.first().copied().unwrap_or(0)))
+                        let reason = winner
+                            .map(|w| {
+                                let loser = 1 - w as usize;
+                                loss_reason_index(o.losses.get(loser).copied().flatten())
+                            })
+                            .unwrap_or(4);
+                        Some((
+                            winner,
+                            o.turns,
+                            o.first,
+                            o.mulligans.first().copied().unwrap_or(0),
+                            reason,
+                        ))
                     }
                     Err(_) => None,
                 }
@@ -216,9 +246,11 @@ pub fn run_matchup(
         for r in results {
             stats.games += 1;
             match r {
-                Some((winner, turns, first, my_mulls)) => {
+                Some((winner, turns, first, my_mulls, reason)) => {
                     stats.turns_sum += turns as u64;
                     stats.my_mulligans += my_mulls as u32;
+                    stats.turn_hist[(turns as usize).saturating_sub(1).min(39)] += 1;
+                    stats.mull_hist[(my_mulls as usize).min(3)] += 1;
                     let on_play = first == 0;
                     if on_play {
                         stats.on_play_games += 1;
@@ -226,11 +258,15 @@ pub fn run_matchup(
                     match winner {
                         Some(0) => {
                             stats.wins += 1;
+                            stats.win_reasons[reason as usize] += 1;
                             if on_play {
                                 stats.on_play_wins += 1;
                             }
                         }
-                        Some(_) => stats.losses += 1,
+                        Some(_) => {
+                            stats.losses += 1;
+                            stats.loss_reasons[reason as usize] += 1;
+                        }
                         None => stats.draws += 1,
                     }
                 }

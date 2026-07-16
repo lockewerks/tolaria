@@ -62,14 +62,15 @@ enum Command {
     },
     /// Compile the entire card pool and print the coverage histogram.
     Coverage,
-    /// Launch the interactive terminal UI (the default).
-    Tui {
+    /// Goldfish: play against a passive opponent to measure the deck as it
+    /// stands (kill turn, consistency). Any deck size.
+    Goldfish {
         #[arg(long)]
-        deck: Option<std::path::PathBuf>,
-        #[arg(long, default_value = "modern")]
-        format: String,
+        deck: std::path::PathBuf,
         #[arg(long, default_value_t = 1000)]
         games: u32,
+        #[arg(long, default_value_t = 0x544f4c41524941)]
+        seed: u64,
     },
     /// Sync tournament data and print the computed metagame.
     FetchMeta {
@@ -209,7 +210,7 @@ fn main() -> Result<()> {
             !no_early_stop,
         ),
         Some(Command::Pod { deck, games, top, seed }) => cmd_pod(&deck, games, top, seed),
-        Some(Command::Tui { deck, format, games }) => launch_tui(deck, format, games),
+        Some(Command::Goldfish { deck, games, seed }) => cmd_goldfish(&deck, games, seed),
         None => {
             let t = cli.top;
             match t.deck {
@@ -225,7 +226,7 @@ fn main() -> Result<()> {
                     t.json.as_deref(),
                     !t.no_early_stop,
                 ),
-                None => launch_tui(None, t.format, t.games.parse().unwrap_or(1000)),
+                None => launch_desktop(),
             }
         }
     }
@@ -284,15 +285,66 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: u64) -> Result<
     Ok(())
 }
 
-fn launch_tui(deck: Option<std::path::PathBuf>, format: String, games: u32) -> Result<()> {
-    mtg_tui::run_tui(mtg_tui::TuiArgs {
-        deck,
-        format,
-        games,
-        days: 60,
-        top: 12,
-        seed: 0x544f4c41524941,
-    })
+/// Bare `tolaria` opens the desktop app when it sits next to this binary.
+fn launch_desktop() -> Result<()> {
+    let exe = std::env::current_exe()?;
+    let desktop = exe.with_file_name("tolaria-desktop.exe");
+    if desktop.exists() {
+        std::process::Command::new(desktop).spawn()?;
+        Ok(())
+    } else {
+        println!(
+            "tolaria-desktop.exe not found next to this binary.\n\
+             Build it with: cargo build --release -p tolaria-desktop\n\
+             Headless usage: tolaria --help"
+        );
+        Ok(())
+    }
+}
+
+fn cmd_goldfish(deck: &std::path::Path, games: u32, seed: u64) -> Result<()> {
+    let (pool, _) = load_pool(false, false)?;
+    let user = mtg_sources::load_deck_file(&pool, deck)?;
+    let user_sim = to_sim_deck(&user, 1.0);
+    let cfg = mtg_sim::SimConfig {
+        games_cap: games,
+        floor: games,
+        early_stop: false,
+        precision_target: None,
+        cancel: None,
+        master_seed: seed,
+        rules: mtg_engine::RulesConfig::duel(),
+    };
+    let progress = std::sync::Arc::new(mtg_sim::MatchupProgress::default());
+    let started = std::time::Instant::now();
+    let g = mtg_sim::goldfish::run_goldfish(&pool, &user_sim, &cfg, &progress);
+    let elapsed = started.elapsed().as_secs_f64();
+    println!(
+        "{}: {} goldfish games in {:.2}s ({:.0}/s), {} panics",
+        user_sim.name,
+        g.games,
+        elapsed,
+        g.games as f64 / elapsed.max(0.0001),
+        g.panics
+    );
+    println!(
+        "kills {} / no-kill-by-cap {}; average kill on your turn {:.2}",
+        g.kills, g.no_kill, g.avg_kill_turn
+    );
+    println!(
+        "killed by turn 4: {:.1}%, turn 5: {:.1}%, turn 6: {:.1}%, turn 8: {:.1}%",
+        g.kill_by(4) * 100.0,
+        g.kill_by(5) * 100.0,
+        g.kill_by(6) * 100.0,
+        g.kill_by(8) * 100.0
+    );
+    let total_mulls: u32 = g.mull_hist.iter().enumerate().map(|(i, n)| i as u32 * n).sum();
+    println!(
+        "mulligans: {:.2} per game ({} kept 7)",
+        total_mulls as f64 / g.games.max(1) as f64,
+        g.mull_hist.first().copied().unwrap_or(0)
+    );
+    Ok(())
 }
 
 /// Sync sources and compute the meta gauntlet, printing status lines.
@@ -308,7 +360,7 @@ fn load_meta(
             println!("{s}");
         }
     };
-    mtg_tui::meta_loader::load_meta(pool, format_str, days, top, &mut status)
+    mtg_sim::meta_loader::load_meta(pool, format_str, days, top, &mut status)
 }
 
 fn print_meta(meta: &[mtg_sim::SimDeck]) {

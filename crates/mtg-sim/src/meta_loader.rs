@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 use mtg_data::CardPool;
-use mtg_sim::SimDeck;
+
+use crate::SimDeck;
 
 pub fn creature_count(pool: &CardPool, cards: &[(mtg_data::CardId, u8)]) -> u32 {
     cards

@@ -37,7 +37,6 @@ mtg-ai = { path = "crates/mtg-ai" }
 mtg-stats = { path = "crates/mtg-stats" }
 mtg-sim = { path = "crates/mtg-sim" }
 mtg-sources = { path = "crates/mtg-sources" }
-mtg-tui = { path = "crates/mtg-tui" }
 
 # Sims are CPU-bound; thin LTO buys real throughput without painful link times.
 [profile.release]

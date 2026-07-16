@@ -33,6 +33,13 @@ struct CardRow {
 }
 
 #[derive(Serialize, Clone)]
+struct FormatFit {
+    name: String,
+    legal_frac: f64,
+    size_ok: bool,
+}
+
+#[derive(Serialize, Clone)]
 struct DeckInfo {
     name: String,
     total: u32,
@@ -45,6 +52,10 @@ struct DeckInfo {
     colors: String,
     unresolved: Vec<String>,
     commander: Option<String>,
+    lands: u32,
+    avg_mana_value: f64,
+    formats: Vec<FormatFit>,
+    recommended: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -138,6 +149,8 @@ struct RunResult {
     gauntlet: Option<mtg_stats::GauntletStats>,
     sweep: Option<SweepDto>,
     pod: Option<mtg_stats::MatchupStats>,
+    #[serde(default)]
+    goldfish: Option<mtg_sim::goldfish::GoldfishStats>,
 }
 
 #[derive(Serialize, Clone)]
@@ -232,6 +245,10 @@ fn build_deck_info(pool: &CardPool, text: &str, fallback: &str) -> DeckInfo {
         colors: String::new(),
         unresolved,
         commander: None,
+        lands: 0,
+        avg_mana_value: 0.0,
+        formats: Vec::new(),
+        recommended: String::new(),
     };
     let Some(resolved) = resolved else { return info };
     info.commander = resolved.commander.map(|c| pool.get(c).name.to_string());
@@ -267,6 +284,62 @@ fn build_deck_info(pool: &CardPool, text: &str, fallback: &str) -> DeckInfo {
         });
     }
     info.rows.sort_by(|a, b| a.mana_value.cmp(&b.mana_value).then(a.name.cmp(&b.name)));
+
+    // Land count and average mana value of nonland cards.
+    let mut mv_sum = 0u64;
+    let mut nonland = 0u32;
+    for (cid, count) in &resolved.main {
+        let card = pool.get(*cid);
+        if card.front().is_land() {
+            info.lands += *count as u32;
+        } else {
+            nonland += *count as u32;
+            mv_sum += card.cmc as u64 * *count as u64;
+        }
+    }
+    info.avg_mana_value = if nonland > 0 { mv_sum as f64 / nonland as f64 } else { 0.0 };
+
+    // Format fit: fraction of the list legal per format, plus size rules.
+    // Recommendation is the most restrictive format the deck fully fits.
+    for f in mtg_data::Format::ALL {
+        let mut legal = 0u32;
+        for (cid, count) in &resolved.main {
+            let l = pool.get(*cid).legalities;
+            if l.is_legal(f) {
+                if l.is_restricted(f) && *count > 1 {
+                    legal += 1;
+                } else {
+                    legal += *count as u32;
+                }
+            }
+        }
+        let legal_frac = legal as f64 / info.total.max(1) as f64;
+        let size_ok = match f {
+            mtg_data::Format::Commander => {
+                info.commander.is_some() && info.total + 1 >= 100
+            }
+            _ => info.total >= 60,
+        };
+        info.formats.push(FormatFit { name: f.to_string(), legal_frac, size_ok });
+    }
+    for name in ["Standard", "Pauper", "Pioneer", "Modern", "Legacy", "Vintage", "Commander"] {
+        if let Some(fit) = info.formats.iter().find(|x| x.name == name) {
+            if fit.legal_frac >= 0.999 && fit.size_ok {
+                info.recommended = name.to_string();
+                break;
+            }
+        }
+    }
+    if info.recommended.is_empty() {
+        if let Some(best) = info
+            .formats
+            .iter()
+            .filter(|x| x.size_ok)
+            .max_by(|a, b| a.legal_frac.partial_cmp(&b.legal_frac).unwrap())
+        {
+            info.recommended = format!("{} ({:.0}% legal)", best.name, best.legal_frac * 100.0);
+        }
+    }
     for (c, ch) in [
         (mtg_ir::ColorSet::W, 'W'),
         (mtg_ir::ColorSet::U, 'U'),
@@ -372,7 +445,7 @@ async fn fetch_meta(
         let mut status = |s: String| {
             let _ = app.emit("meta-progress", s);
         };
-        let meta = mtg_tui::meta_loader::load_meta(&pool, &format, days, top, &mut status)
+        let meta = mtg_sim::meta_loader::load_meta(&pool, &format, days, top, &mut status)
             .map_err(|e| e.to_string())?;
         let entries = meta
             .iter()
@@ -485,14 +558,15 @@ fn run_thread(
     let opponents: Vec<SimDeck> = match config.mode.as_str() {
         "gauntlet" => {
             let mut status = |s: String| emit_prep(app, &s);
-            mtg_tui::meta_loader::load_meta(&pool, &config.format, config.days, config.top, &mut status)
+            mtg_sim::meta_loader::load_meta(&pool, &config.format, config.days, config.top, &mut status)
                 .map_err(|e| e.to_string())?
         }
         "pod" => {
             let mut status = |s: String| emit_prep(app, &s);
-            mtg_tui::meta_loader::load_meta(&pool, "commander", config.days, config.top, &mut status)
+            mtg_sim::meta_loader::load_meta(&pool, "commander", config.days, config.top, &mut status)
                 .map_err(|e| e.to_string())?
         }
+        "goldfish" => Vec::new(),
         "duel" | "sweep" => {
             let vs = config.vs_text.clone().ok_or("pick an opponent deck")?;
             let vparsed = mtg_sources::parse_deck_text(&vs);
@@ -503,7 +577,7 @@ fn run_thread(
         }
         m => return Err(format!("unknown mode: {m}")),
     };
-    if opponents.is_empty() {
+    if opponents.is_empty() && config.mode != "goldfish" {
         return Err("no opponents resolved".into());
     }
     if config.mode == "pod" && opponents.len() < 3 {
@@ -543,6 +617,7 @@ fn run_thread(
         "gauntlet" => opponents.iter().map(|o| o.name.clone()).collect(),
         "sweep" => vec![format!("all hands vs {}", opponents[0].name)],
         "duel" => vec![opponents[0].name.clone()],
+        "goldfish" => vec!["goldfish (passive opponent)".to_string()],
         _ => vec![format!("4-player pods, {} meta decks", opponents.len())],
     };
     let done = Arc::new(AtomicBool::new(false));
@@ -597,9 +672,14 @@ fn run_thread(
         gauntlet: None,
         sweep: None,
         pod: None,
+        goldfish: None,
     };
 
     match config.mode.as_str() {
+        "goldfish" => {
+            let g = mtg_sim::goldfish::run_goldfish(&pool, &user, &cfg, &progress[0]);
+            result.goldfish = Some(g);
+        }
         "gauntlet" => {
             let mut stats = mtg_sim::run_gauntlet(&pool, &user, &opponents, &cfg, &progress);
             stats.deck_name = deck_name.clone();
@@ -710,6 +790,11 @@ async fn list_runs() -> Result<Vec<RunMeta>, String> {
             (s.weighted_win_rate, s.total_games)
         } else if let Some(p) = &r.pod {
             (p.win_rate(), p.games as u64)
+        } else if let Some(g) = &r.goldfish {
+            (
+                if g.games > 0 { g.kills as f64 / g.games as f64 } else { 0.0 },
+                g.games as u64,
+            )
         } else {
             (0.0, 0)
         };

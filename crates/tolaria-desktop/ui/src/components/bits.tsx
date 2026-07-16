@@ -1,16 +1,36 @@
 import { ReactNode } from "react";
+import { GLOSSARY } from "../glossary";
 
-export function Stat({ value, label }: { value: string; label: string }) {
+/** Dwell tooltip: hover for just over a second and the explanation pops. */
+export function Tip({ k, children }: { k: string; children: ReactNode }) {
+  const g = GLOSSARY[k];
+  if (!g) return <>{children}</>;
+  return (
+    <span className="tip">
+      {children}
+      <span className="tip-pop">
+        <b>{g.title}</b>
+        {g.text}
+      </span>
+    </span>
+  );
+}
+
+export function Stat({ value, label, tip }: { value: string; label: string; tip?: string }) {
   return (
     <div className="stat">
       <div className="v">{value}</div>
-      <div className="k">{label}</div>
+      <div className="k">{tip ? <Tip k={tip}>{label}</Tip> : label}</div>
     </div>
   );
 }
 
 export function TierBadge({ tier }: { tier: string }) {
-  return <span className={`badge ${tier.toLowerCase()}`}>{tier}</span>;
+  return (
+    <Tip k={`tier-${tier.toLowerCase()}`}>
+      <span className={`badge ${tier.toLowerCase()}`}>{tier}</span>
+    </Tip>
+  );
 }
 
 export function Panel({ title, children }: { title?: string; children: ReactNode }) {

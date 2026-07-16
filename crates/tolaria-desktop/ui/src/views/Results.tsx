@@ -8,8 +8,15 @@ import {
   weightedWinRate,
   winRate,
 } from "../types";
-import { Panel, Stat } from "../components/bits";
-import { ForestPlot, SplitBars, SweepHistogram, matchupTurns } from "../components/charts";
+import { Panel, Stat, Tip } from "../components/bits";
+import {
+  CountBars,
+  ForestPlot,
+  ReasonBars,
+  SplitBars,
+  SweepHistogram,
+  matchupTurns,
+} from "../components/charts";
 
 type SortKey = "wr" | "share" | "games" | "name" | "cov";
 
@@ -49,7 +56,7 @@ function MatchupTable({
     return r;
   }, [g, sort, asc]);
 
-  const header = (label: string, k: SortKey, num = true) => (
+  const header = (label: string, k: SortKey, tip: string | null, num = true) => (
     <th
       className={num ? "num" : ""}
       onClick={() => {
@@ -60,7 +67,7 @@ function MatchupTable({
         }
       }}
     >
-      {label}
+      {tip ? <Tip k={tip}>{label}</Tip> : label}
       {sort === k ? (asc ? " ↑" : " ↓") : ""}
     </th>
   );
@@ -69,14 +76,20 @@ function MatchupTable({
     <table>
       <thead>
         <tr>
-          {header("matchup", "name", false)}
-          {header("share", "share")}
-          {header("games", "games")}
-          {header("win rate", "wr")}
-          <th className="num">95% ci</th>
-          <th className="num">play</th>
-          <th className="num">draw</th>
-          {header("opp cov", "cov")}
+          {header("matchup", "name", null, false)}
+          {header("share", "share", "share")}
+          {header("games", "games", "games-cap")}
+          {header("win rate", "wr", "win-rate")}
+          <th className="num">
+            <Tip k="ci">95% ci</Tip>
+          </th>
+          <th className="num">
+            <Tip k="on-play">play</Tip>
+          </th>
+          <th className="num">
+            <Tip k="on-draw">draw</Tip>
+          </th>
+          {header("opp cov", "cov", "opp-cov")}
           <th />
         </tr>
       </thead>
@@ -105,8 +118,16 @@ function MatchupTable({
               <td className="num">{pct(onDraw, 0)}</td>
               <td className="num">{pct(m.opp_coverage_playable_frac, 0)}</td>
               <td>
-                {m.stopped_early ? <span className="badge">early</span> : null}{" "}
-                {m.opp_pilot_warning ? <span className="badge warn">pilot</span> : null}
+                {m.stopped_early ? (
+                  <Tip k="early-stop">
+                    <span className="badge">early</span>
+                  </Tip>
+                ) : null}{" "}
+                {m.opp_pilot_warning ? (
+                  <Tip k="pilot">
+                    <span className="badge warn">pilot</span>
+                  </Tip>
+                ) : null}
               </td>
             </tr>
           );
@@ -120,6 +141,8 @@ function Drill({ m }: { m: MatchupStats }) {
   const onPlay = m.on_play_games > 0 ? m.on_play_wins / m.on_play_games : 0.5;
   const drawGames = m.games - m.on_play_games;
   const onDraw = drawGames > 0 ? (m.wins - m.on_play_wins) / drawGames : 0.5;
+  const mullHist = m.mull_hist ?? [];
+  const keptSeven = mullHist[0] ?? 0;
   return (
     <Panel title={`drill-in: ${m.opponent}`}>
       <div className="row">
@@ -130,8 +153,14 @@ function Drill({ m }: { m: MatchupStats }) {
           <div className="hint">
             record {m.wins.toLocaleString()}-{m.losses.toLocaleString()}
             {m.draws > 0 ? `-${m.draws}` : ""} over {m.games.toLocaleString()} games, average game{" "}
-            {matchupTurns(m).toFixed(1)} turns, {m.my_mulligans} mulligans taken, {m.panics} panics
+            {matchupTurns(m).toFixed(1)} turns, {m.panics} panics
             {m.stopped_early ? "; stopped early once the verdict was statistically decided" : ""}.
+          </div>
+          <div className="hint">
+            <Tip k="mulligan">mulligans</Tip>: kept 7 in {keptSeven.toLocaleString()} games
+            {mullHist.length > 1
+              ? `, one mull ${mullHist[1] ?? 0}, two ${mullHist[2] ?? 0}, three or more ${mullHist[3] ?? 0}`
+              : ""}
           </div>
           <div className="hint">
             opponent list coverage: {pct(m.opp_coverage_playable_frac, 0)} playable (
@@ -142,6 +171,22 @@ function Drill({ m }: { m: MatchupStats }) {
           </div>
         </div>
       </div>
+      {(m.turn_hist ?? []).some((v) => v > 0) ? (
+        <div className="row" style={{ marginTop: 10 }}>
+          <div>
+            <h2>
+              <Tip k="turn-hist">game length (total turns)</Tip>
+            </h2>
+            <CountBars values={m.turn_hist} labelEvery={5} ariaLabel="Game length distribution" />
+          </div>
+          <div>
+            <h2>
+              <Tip k="end-reasons">end reasons</Tip>
+            </h2>
+            <ReasonBars wins={m.win_reasons ?? []} losses={m.loss_reasons ?? []} />
+          </div>
+        </div>
+      ) : null}
     </Panel>
   );
 }
@@ -161,6 +206,7 @@ export function ResultsView({ result }: { result: RunResult | null }) {
   const g = result.gauntlet;
   const s = result.sweep;
   const p = result.pod;
+  const gf = result.goldfish;
   const sel = g?.matchups.find((m) => m.opponent === selected) ?? null;
   const avgCov = g
     ? g.matchups.reduce((a, m) => a + m.opp_coverage_playable_frac, 0) / Math.max(1, g.matchups.length)
@@ -175,25 +221,44 @@ export function ResultsView({ result }: { result: RunResult | null }) {
       <div className="stats">
         {g ? (
           <>
-            <Stat value={pct(weightedWinRate(g))} label={g.matchups.length > 1 ? "weighted vs the field" : "win rate"} />
+            <Stat
+              value={pct(weightedWinRate(g))}
+              label={g.matchups.length > 1 ? "weighted vs the field" : "win rate"}
+              tip={g.matchups.length > 1 ? "weighted" : "win-rate"}
+            />
             <Stat value={g.matchups.reduce((a, m) => a + m.games, 0).toLocaleString()} label="games" />
           </>
         ) : null}
         {s ? (
           <>
-            <Stat value={pct(s.weighted_win_rate, 2)} label="hand-exact weighted win rate" />
-            <Stat value={s.distinct_hands.toLocaleString()} label="distinct opening hands" />
+            <Stat value={pct(s.weighted_win_rate, 2)} label="hand-exact weighted win rate" tip="mode-sweep" />
+            <Stat value={s.distinct_hands.toLocaleString()} label="distinct opening hands" tip="dealt-prob" />
             <Stat value={s.total_games.toLocaleString()} label="games" />
           </>
         ) : null}
         {p ? (
           <>
-            <Stat value={pct(winRate(p))} label="pod seat win rate (baseline 25%)" />
+            <Stat value={pct(winRate(p))} label="pod seat win rate (baseline 25%)" tip="mode-pod" />
             <Stat value={p.games.toLocaleString()} label="pods" />
           </>
         ) : null}
+        {gf ? (
+          <>
+            <Stat
+              value={gf.avg_kill_turn > 0 ? gf.avg_kill_turn.toFixed(2) : "none"}
+              label="average kill turn"
+              tip="kill-turn"
+            />
+            <Stat
+              value={pct(gf.games > 0 ? gf.kills / gf.games : 0, 1)}
+              label="games with a kill"
+              tip="mode-goldfish"
+            />
+            <Stat value={gf.games.toLocaleString()} label="games" />
+          </>
+        ) : null}
         <Stat value={`${result.elapsed.toFixed(1)}s`} label="wall clock" />
-        <Stat value={pct(result.deck_playable, 0)} label="deck playable coverage" />
+        <Stat value={pct(result.deck_playable, 0)} label="deck playable coverage" tip="playable" />
       </div>
 
       {g && avgCov < 0.85 ? (
@@ -275,6 +340,36 @@ export function ResultsView({ result }: { result: RunResult | null }) {
           </div>
         </Panel>
       ) : null}
+
+      {gf ? (
+        <>
+          <Panel title="kill turn distribution">
+            <CountBars
+              values={gf.kill_hist}
+              labelEvery={2}
+              ariaLabel="Kills by your turn number"
+            />
+            <div className="hint">
+              killed by turn 4: {pct(kilBy(gf, 4), 1)}, turn 5: {pct(kilBy(gf, 5), 1)}, turn 6:{" "}
+              {pct(kilBy(gf, 6), 1)}, turn 8: {pct(kilBy(gf, 8), 1)}; {gf.no_kill} games never got
+              there before the turn cap; {gf.panics} panics
+            </div>
+          </Panel>
+          <Panel title="consistency">
+            <div className="hint">
+              <Tip k="mulligan">mulligans</Tip>: kept 7 in {gf.mull_hist[0] ?? 0} games, one mull{" "}
+              {gf.mull_hist[1] ?? 0}, two {gf.mull_hist[2] ?? 0}, three or more {gf.mull_hist[3] ?? 0}.
+              Remember this is a goldfish: zero interaction, so real games land a turn or two later.
+            </div>
+          </Panel>
+        </>
+      ) : null}
     </div>
   );
+}
+
+function kilBy(gf: { kill_hist: number[]; games: number }, turn: number): number {
+  if (gf.games === 0) return 0;
+  const upto = gf.kill_hist.slice(0, turn).reduce((a, b) => a + b, 0);
+  return upto / gf.games;
 }

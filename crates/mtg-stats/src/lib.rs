@@ -55,6 +55,19 @@ pub struct MatchupStats {
     pub opp_coverage_full_frac: f64,
     pub opp_coverage_playable_frac: f64,
     pub opp_pilot_warning: bool,
+    /// Game-length distribution in total turns, buckets 1..=40 (last bucket
+    /// is 40 or more).
+    #[serde(default)]
+    pub turn_hist: Vec<u32>,
+    /// How won games ended: [life, poison, deckout, commander damage, other].
+    #[serde(default)]
+    pub win_reasons: Vec<u32>,
+    /// How lost games ended, same order.
+    #[serde(default)]
+    pub loss_reasons: Vec<u32>,
+    /// User mulligans per game: 0, 1, 2, 3+.
+    #[serde(default)]
+    pub mull_hist: Vec<u32>,
 }
 
 impl MatchupStats {

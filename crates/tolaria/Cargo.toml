@@ -9,7 +9,6 @@ name = "tolaria"
 path = "src/main.rs"
 
 [dependencies]
-mtg-tui.workspace = true
 mtg-sim.workspace = true
 mtg-sources.workspace = true
 mtg-cards.workspace = true

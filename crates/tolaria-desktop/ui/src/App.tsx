@@ -6,8 +6,9 @@ import { RunView } from "./views/Run";
 import { ResultsView } from "./views/Results";
 import { MetaView } from "./views/Meta";
 import { HistoryView } from "./views/History";
+import { GlossaryView } from "./views/Glossary";
 
-type View = "decks" | "run" | "results" | "meta" | "history";
+type View = "decks" | "run" | "results" | "meta" | "history" | "glossary";
 
 export default function App() {
   const [view, setView] = useState<View>("decks");
@@ -66,6 +67,7 @@ export default function App() {
     { id: "results", label: "Results" },
     { id: "meta", label: "Meta" },
     { id: "history", label: "History" },
+    { id: "glossary", label: "Glossary" },
   ];
 
   return (
@@ -121,6 +123,7 @@ export default function App() {
         {view === "results" ? <ResultsView result={result} /> : null}
         {view === "meta" ? <MetaView /> : null}
         {view === "history" ? <HistoryView runs={runs} openRun={openRun} /> : null}
+        {view === "glossary" ? <GlossaryView /> : null}
       </div>
     </>
   );

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { DeckFile, DeckInfo, ProgressPayload, RunConfig } from "../types";
-import { Panel, ProgressRow } from "../components/bits";
+import { Panel, ProgressRow, Tip } from "../components/bits";
 
 const FORMATS = ["modern", "standard", "pioneer", "legacy", "vintage", "pauper", "commander"];
 
@@ -96,11 +96,14 @@ export function RunView({
         <div className="row">
           <div className="grow">
             <label className="field">
-              <span className="cap">mode</span>
+              <span className="cap">
+                <Tip k={`mode-${mode}`}>mode</Tip>
+              </span>
               <select value={mode} onChange={(e) => setMode(e.target.value)}>
                 <option value="gauntlet">gauntlet: versus the format meta</option>
                 <option value="duel">duel: versus one saved deck</option>
                 <option value="sweep">all hands: every opening seven versus one saved deck</option>
+                <option value="goldfish">goldfish: passive opponent, deck speed as it stands</option>
                 <option value="pod">commander pods: four players versus the EDHREC meta</option>
               </select>
             </label>
@@ -131,9 +134,16 @@ export function RunView({
             ) : null}
             {mode === "sweep" ? (
               <label className="field">
-                <span className="cap">continuations per hand</span>
+                <span className="cap">
+                  <Tip k="per-hand">continuations per hand</Tip>
+                </span>
                 <input type="number" value={perHand} onChange={(e) => setPerHand(e.target.value)} />
               </label>
+            ) : null}
+            {mode === "goldfish" ? (
+              <div className="hint">
+                the opponent is a pile of Wastes piloted by nobody: pure deck speed, any deck size
+              </div>
             ) : null}
           </div>
           <div className="grow">
@@ -141,17 +151,21 @@ export function RunView({
               <>
                 <label className="check">
                   <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-                  auto: play until the confidence interval is tight
+                  <Tip k="auto-precision">auto: play until the confidence interval is tight</Tip>
                 </label>
                 {auto ? (
                   <label className="field">
-                    <span className="cap">precision target (CI half-width, percentage points)</span>
+                    <span className="cap">
+                      <Tip k="auto-precision">precision target (CI half-width, percentage points)</Tip>
+                    </span>
                     <input type="text" value={precision} onChange={(e) => setPrecision(e.target.value)} />
                   </label>
                 ) : (
                   <>
                     <label className="field">
-                      <span className="cap">games per matchup (cap)</span>
+                      <span className="cap">
+                        <Tip k="games-cap">games per matchup (cap)</Tip>
+                      </span>
                       <input type="text" value={games} onChange={(e) => setGames(e.target.value)} />
                     </label>
                     <label className="check">
@@ -160,7 +174,7 @@ export function RunView({
                         checked={earlyStop}
                         onChange={(e) => setEarlyStop(e.target.checked)}
                       />
-                      stop a matchup early once the verdict is statistically decided
+                      <Tip k="early-stop">stop a matchup early once the verdict is statistically decided</Tip>
                     </label>
                   </>
                 )}
@@ -174,17 +188,23 @@ export function RunView({
             {mode === "gauntlet" || mode === "pod" ? (
               <div className="row">
                 <label className="field grow">
-                  <span className="cap">window (days)</span>
+                  <span className="cap">
+                    <Tip k="window">window (days)</Tip>
+                  </span>
                   <input type="text" value={days} onChange={(e) => setDays(e.target.value)} />
                 </label>
                 <label className="field grow">
-                  <span className="cap">archetypes</span>
+                  <span className="cap">
+                    <Tip k="archetypes">archetypes</Tip>
+                  </span>
                   <input type="text" value={top} onChange={(e) => setTop(e.target.value)} />
                 </label>
               </div>
             ) : null}
             <label className="field">
-              <span className="cap">seed (blank = TOLARIA; same seed, same carnage)</span>
+              <span className="cap">
+                <Tip k="seed">seed (blank = TOLARIA; same seed, same carnage)</Tip>
+              </span>
               <input type="text" value={seed} onChange={(e) => setSeed(e.target.value)} />
             </label>
           </div>

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { api } from "../api";
 import { DeckFile, DeckInfo, pct } from "../types";
-import { Panel, TierBadge } from "../components/bits";
+import { Panel, Stat, TierBadge, Tip } from "../components/bits";
 import { CoverageDonut, CurveChart } from "../components/charts";
 
 export function DecksView({
@@ -150,10 +150,43 @@ export function DecksView({
                     {current.unresolved.length > 4 ? ` and ${current.unresolved.length - 4} more` : ""}
                   </div>
                 ) : null}
+                <div className="stats" style={{ marginTop: 10 }}>
+                  <Stat value={String(current.lands)} label="lands" tip="lands" />
+                  <Stat value={current.avg_mana_value.toFixed(2)} label="avg mana value" tip="avg-mv" />
+                  <Stat
+                    value={current.recommended || "none"}
+                    label="best-fit format"
+                    tip="recommended"
+                  />
+                </div>
                 <div className="row" style={{ marginTop: 8 }}>
                   <button className="primary" onClick={goRun}>
                     run this deck
                   </button>
+                </div>
+              </Panel>
+              <Panel title="format fit">
+                {current.formats.map((f) => (
+                  <div
+                    key={f.name}
+                    className={`fit-row${current.recommended.startsWith(f.name) ? " rec" : ""}`}
+                  >
+                    <span className="name">{f.name}</span>
+                    <div className="fit-track">
+                      <div className="fit-fill" style={{ width: `${f.legal_frac * 100}%` }} />
+                    </div>
+                    <span style={{ width: 48, textAlign: "right" }}>
+                      {(f.legal_frac * 100).toFixed(0)}%
+                    </span>
+                    {!f.size_ok ? <span className="badge">size</span> : null}
+                    {current.recommended.startsWith(f.name) ? (
+                      <span className="badge full">best fit</span>
+                    ) : null}
+                  </div>
+                ))}
+                <div className="hint">
+                  <Tip k="format-fit">legality share per format</Tip>; the size badge means the deck
+                  does not meet that format's size rules
                 </div>
               </Panel>
               <Panel title="Cards and coverage">
@@ -205,8 +238,10 @@ export function DecksView({
                   </table>
                 </div>
                 <div className="hint">
-                  playable {pct((current.full + current.partial) / Math.max(1, current.total), 0)}; click a
-                  row with a caret to see exactly which clauses the compiler dropped
+                  <Tip k="playable">
+                    playable {pct((current.full + current.partial) / Math.max(1, current.total), 0)}
+                  </Tip>
+                  ; click a row with a caret to see exactly which clauses the compiler dropped
                 </div>
               </Panel>
             </>

@@ -23,4 +23,3 @@ mtg-engine.workspace = true
 mtg-sim.workspace = true
 mtg-stats.workspace = true
 mtg-sources.workspace = true
-mtg-tui.workspace = true

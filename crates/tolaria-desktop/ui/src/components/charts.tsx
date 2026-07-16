@@ -264,3 +264,87 @@ export function SplitBars({ a, b, aLabel, bLabel }: { a: number; b: number; aLab
 export function matchupTurns(m: MatchupStats): number {
   return m.games > 0 ? m.turns_sum / m.games : 0;
 }
+
+/** Generic count histogram with sparse x labels. */
+export function CountBars({
+  values,
+  labelEvery,
+  labelOffset = 1,
+  width = 560,
+  ariaLabel,
+}: {
+  values: number[];
+  labelEvery: number;
+  labelOffset?: number;
+  width?: number;
+  ariaLabel: string;
+}) {
+  const height = 140;
+  const left = 10;
+  const bottom = 22;
+  const max = Math.max(1, ...values);
+  const n = Math.max(1, values.length);
+  const plotW = width - left - 8;
+  const barW = Math.max(2, plotW / n - 2);
+  return (
+    <div className="chart-wrap">
+      <svg width={width} height={height} role="img" aria-label={ariaLabel}>
+        <line x1={left} y1={height - bottom} x2={width - 4} y2={height - bottom} className="base-line" />
+        {values.map((v, i) => {
+          const h = v === 0 ? 0 : Math.max(2, (v / max) * (height - bottom - 16));
+          const bx = left + (i / n) * plotW + 1;
+          return (
+            <g key={i}>
+              <title>{`${i + labelOffset}: ${v.toLocaleString()} games`}</title>
+              {v > 0 ? (
+                <rect x={bx} y={height - bottom - h} width={barW} height={h} rx={2} fill={BLUE} />
+              ) : null}
+              {(i + labelOffset) % labelEvery === 0 ? (
+                <text x={bx + barW / 2} y={height - 7} textAnchor="middle" className="axis-label">
+                  {i + labelOffset}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+const REASON_LABELS = ["damage", "poison", "decked", "commander", "other"];
+
+/** Paired end-reason breakdown for wins and losses. */
+export function ReasonBars({ wins, losses }: { wins: number[]; losses: number[] }) {
+  const totalW = Math.max(1, wins.reduce((a, b) => a + b, 0));
+  const totalL = Math.max(1, losses.reduce((a, b) => a + b, 0));
+  return (
+    <table style={{ maxWidth: 460 }}>
+      <thead>
+        <tr>
+          <th>ended by</th>
+          <th className="num">your wins</th>
+          <th className="num">your losses</th>
+        </tr>
+      </thead>
+      <tbody>
+        {REASON_LABELS.map((label, i) => {
+          const w = wins[i] ?? 0;
+          const l = losses[i] ?? 0;
+          if (w === 0 && l === 0) return null;
+          return (
+            <tr key={label}>
+              <td>{label}</td>
+              <td className="num">
+                {w.toLocaleString()} ({((w / totalW) * 100).toFixed(0)}%)
+              </td>
+              <td className="num">
+                {l.toLocaleString()} ({((l / totalL) * 100).toFixed(0)}%)
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
