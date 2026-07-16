@@ -377,6 +377,9 @@ pub fn parse_target_phrase(s: &str) -> Option<(TargetSpec, &str)> {
     let rest = s.strip_prefix("target ").or_else(|| s.strip_prefix("targets "))?;
 
     // Player targets.
+    if let Some(r) = rest.strip_prefix("player or planeswalker") {
+        return Some((TargetSpec { count, what: TargetWhat::PlayerOrPlaneswalker }, r));
+    }
     if let Some(r) = rest.strip_prefix("player") {
         return Some((TargetSpec { count, what: TargetWhat::Player(PlayerFilter::Any) }, r));
     }

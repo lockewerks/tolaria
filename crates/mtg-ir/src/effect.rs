@@ -133,6 +133,8 @@ pub enum TargetWhat {
     Player(PlayerFilter),
     /// "Any target": creature, planeswalker, battle, or player.
     AnyDamageable,
+    /// "Target player or planeswalker".
+    PlayerOrPlaneswalker,
     SpellOnStack(SpellFilter),
 }
 

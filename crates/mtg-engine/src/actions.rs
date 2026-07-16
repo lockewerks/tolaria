@@ -206,6 +206,22 @@ pub fn legal_targets(
                 }
             }
         }
+        TargetWhat::PlayerOrPlaneswalker => {
+            for p in &gs.players {
+                for &id in &p.battlefield {
+                    if gs.obj(id).chars.types.contains(CardTypes::PLANESWALKER)
+                        && targetable(gs, id)
+                    {
+                        out.push(Target::Obj(id, gs.obj(id).incarnation));
+                    }
+                }
+            }
+            for s in gs.seats() {
+                if gs.player(s).lost.is_none() {
+                    out.push(Target::Player(s));
+                }
+            }
+        }
         TargetWhat::SpellOnStack(sf) => {
             for item in &gs.stack {
                 if matches!(item.kind, StackKind::Spell { .. })

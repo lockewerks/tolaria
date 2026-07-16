@@ -726,6 +726,51 @@ fn parse_player_sel(s: &str, trigger_ctx: bool) -> Option<PlayerSel> {
 }
 
 fn parse_sentence(s: &str, specs: &mut Vec<TargetSpec>, trigger_ctx: bool) -> Option<Effect> {
+    let mark = specs.len();
+    if let Some(e) = parse_sentence_inner(s, specs, trigger_ctx) {
+        return Some(e);
+    }
+    specs.truncate(mark);
+
+    // Compound sentence fallback: "A and B" where both halves parse on
+    // their own (Lightning Helix), or the second half is a damage
+    // continuation aimed at the first target's controller (Searing Blaze).
+    if let Some(idx) = s.find(" and ") {
+        let (first, second) = (&s[..idx], &s[idx + 5..]);
+        if let Some(e1) = parse_sentence_inner(first, specs, trigger_ctx) {
+            let cont = second
+                .split_once(" damage to ")
+                .filter(|(_, tail)| {
+                    matches!(
+                        tail.trim().trim_end_matches('.'),
+                        "that creature's controller" | "its controller" | "that player"
+                    )
+                })
+                .and_then(|(n, _)| parse_count_word(n.trim()));
+            if let Some(n) = cont {
+                if !specs.is_empty() {
+                    let t = (specs.len() - 1) as u8;
+                    return Some(Effect::Seq(vec![
+                        e1,
+                        Effect::DealDamage {
+                            n,
+                            to: Recipient::Player(PlayerSel::ControllerOf(Box::new(
+                                ObjSel::Target(t),
+                            ))),
+                        },
+                    ]));
+                }
+            }
+            if let Some(e2) = parse_sentence_inner(second, specs, trigger_ctx) {
+                return Some(Effect::Seq(vec![e1, e2]));
+            }
+        }
+        specs.truncate(mark);
+    }
+    None
+}
+
+fn parse_sentence_inner(s: &str, specs: &mut Vec<TargetSpec>, trigger_ctx: bool) -> Option<Effect> {
     let mut s = s.trim();
     for prefix in ["you may ", "then ", "if you do, "] {
         if let Some(r) = s.strip_prefix(prefix) {

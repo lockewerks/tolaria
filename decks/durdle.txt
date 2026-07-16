@@ -1,0 +1,15 @@
+# Deliberately slow value pile for sanity checks.
+4 Divination
+4 Wall of Omens
+4 Kitchen Finks
+4 Serra Angel
+4 Doom Blade
+4 Murder
+3 Grave Titan
+3 Sphinx of Foresight
+4 Sign in Blood
+2 Bloodgift Demon
+8 Island
+8 Swamp
+4 Plains
+4 Dismal Backwater
