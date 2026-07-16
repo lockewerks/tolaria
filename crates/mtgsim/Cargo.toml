@@ -1,0 +1,22 @@
+[package]
+name = "mtgsim"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "mtgsim"
+path = "src/main.rs"
+
+[dependencies]
+mtg-tui.workspace = true
+mtg-sim.workspace = true
+mtg-sources.workspace = true
+mtg-cards.workspace = true
+mtg-data.workspace = true
+mtg-stats.workspace = true
+mtg-engine.workspace = true
+mtg-ai.workspace = true
+mtg-ir.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true

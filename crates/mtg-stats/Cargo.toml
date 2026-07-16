@@ -1,0 +1,7 @@
+[package]
+name = "mtg-stats"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true

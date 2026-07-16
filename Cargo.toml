@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", features = ["use-std"] }
+ureq = { version = "2", features = ["json", "gzip"] }
+flate2 = "1"
+tar = "0.4"
+directories = "5"
+rayon = "1"
+smallvec = { version = "1", features = ["serde"] }
+bitflags = { version = "2", features = ["serde"] }
+indexmap = { version = "2", features = ["serde"] }
+rand = "0.8"
+rand_pcg = "0.3"
+thiserror = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+ratatui = "0.29"
+crossterm = "0.28"
+proptest = "1"
+criterion = "0.5"
+
+mtg-ir = { path = "crates/mtg-ir" }
+mtg-data = { path = "crates/mtg-data" }
+mtg-cards = { path = "crates/mtg-cards" }
+mtg-engine = { path = "crates/mtg-engine" }
+mtg-ai = { path = "crates/mtg-ai" }
+mtg-stats = { path = "crates/mtg-stats" }
+mtg-sim = { path = "crates/mtg-sim" }
+mtg-sources = { path = "crates/mtg-sources" }
+mtg-tui = { path = "crates/mtg-tui" }
+
+# Sims are CPU-bound; thin LTO buys real throughput without painful link times.
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+[profile.bench]
+inherits = "release"

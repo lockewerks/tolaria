@@ -1,0 +1,9 @@
+[package]
+name = "mtg-ir"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+smallvec.workspace = true
+bitflags.workspace = true

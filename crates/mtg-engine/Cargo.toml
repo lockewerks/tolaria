@@ -1,0 +1,13 @@
+[package]
+name = "mtg-engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mtg-ir.workspace = true
+mtg-data.workspace = true
+smallvec.workspace = true
+bitflags.workspace = true
+indexmap.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "mtg-sources"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mtg-data.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+flate2.workspace = true
+tar.workspace = true
+directories.workspace = true
+thiserror.workspace = true
+indexmap.workspace = true

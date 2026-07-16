@@ -1,0 +1,13 @@
+[package]
+name = "mtg-data"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+postcard.workspace = true
+ureq.workspace = true
+flate2.workspace = true
+directories.workspace = true
+thiserror.workspace = true

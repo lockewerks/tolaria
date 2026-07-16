@@ -1,0 +1,14 @@
+[package]
+name = "mtg-cards"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mtg-ir.workspace = true
+mtg-data.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+indexmap.workspace = true
+postcard.workspace = true
+thiserror.workspace = true
+rayon.workspace = true
