@@ -3,7 +3,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type {
   DeckFile,
   DeckInfo,
-  MetaEntry,
+  MetaResponse,
   PoolInfo,
   ProgressPayload,
   RunConfig,
@@ -17,8 +17,8 @@ export const api = {
   saveDeck: (name: string, text: string) => invoke<void>("save_deck", { name, text }),
   listDecks: () => invoke<DeckFile[]>("list_decks"),
   deleteDeck: (name: string) => invoke<void>("delete_deck", { name }),
-  fetchMeta: (format: string, days: number, top: number) =>
-    invoke<MetaEntry[]>("fetch_meta", { format, days, top }),
+  fetchMeta: (format: string, days: number, top: number, selection: string) =>
+    invoke<MetaResponse>("fetch_meta", { format, days, top, selection }),
   startRun: (config: RunConfig) => invoke<void>("start_run", { config }),
   cancelRun: () => invoke<void>("cancel_run"),
   listRuns: () => invoke<RunMeta[]>("list_runs"),

@@ -55,6 +55,14 @@ export interface MetaEntry {
   cards: NameCount[];
 }
 
+export interface MetaResponse {
+  entries: MetaEntry[];
+  archetypes_total: number;
+  eligible: number;
+  classified_decks: number;
+  randomized: boolean;
+}
+
 export interface MatchupStats {
   opponent: string;
   meta_share: number;
@@ -170,6 +178,7 @@ export interface RunConfig {
   precision: number;
   days: number;
   top: number;
+  selection: string;
   seed: number | null;
   early_stop: boolean;
   per_hand: number;

@@ -146,7 +146,12 @@ Sync tournament data and print the computed metagame without simulating.
 |---|---|---|
 | `--format <name>` | `modern` | which meta to compute |
 | `--days <n>` | `60` | trailing tournament window |
-| `--top <n>` | `12` | archetypes to keep |
+| `--top <n\|all>` | `12` | gauntlet size; `all` takes every eligible archetype |
+| `--random` | off | draw the gauntlet at random from the eligible universe |
+
+The output reports the archetype universe: how many archetypes the window
+saw, how many are eligible (3 or more lists behind the consensus), and how
+many decks classified.
 
 ### tolaria run
 
@@ -161,7 +166,8 @@ prints the worst-first table with confidence intervals and coverage.
 | `--games <n\|auto>` | `1000` | per-matchup games, see above |
 | `--precision <pp>` | `1.0` | auto mode CI half-width, percentage points |
 | `--days <n>` | `60` | trailing tournament window |
-| `--top <n>` | `12` | gauntlet size |
+| `--top <n\|all>` | `12` | gauntlet size; `all` fights every eligible archetype |
+| `--random` | off | draw the gauntlet at random from the eligible universe |
 | `--seed <n>` | `0x544f4c41524941` | master seed ("TOLARIA") |
 | `--json <file>` | none | write full results as JSON |
 | `--no-early-stop` | off | play every requested game |

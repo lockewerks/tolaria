@@ -59,8 +59,8 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     group: "Setup",
   },
   archetypes: {
-    title: "Archetypes",
-    text: "How many of the most-played archetypes make the gauntlet, ranked by tournament frequency in the window.",
+    title: "Gauntlet size",
+    text: "An archetype is a named deck family (Burn, Energy, Tron) that tournament lists classify into. A window typically sees 50 to 150 of them; only those with 3 or more real lists are eligible, since a consensus deck needs samples. 'Top' takes the most-played, 'random' draws uniformly from the whole eligible universe (a fresh draw every run), 'all' fights everything. The universe counts are shown on the Meta page and in the run log.",
     group: "Setup",
   },
   "per-hand": {

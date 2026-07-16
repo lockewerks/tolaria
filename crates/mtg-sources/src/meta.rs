@@ -14,13 +14,28 @@ pub struct MetaDeck {
     pub main: Vec<(String, u8)>,
 }
 
-/// Build the top-N meta from classified tournament decks: shares from
-/// archetype frequency, one consensus list per archetype.
-pub fn build_meta(
+/// The whole classified archetype universe for a window: every eligible
+/// archetype with its consensus list, sorted by share, plus the counts a UI
+/// needs to explain what "archetypes" even means.
+#[derive(Debug, Clone)]
+pub struct MetaComputation {
+    /// Distinct archetypes seen in the window, eligible or not.
+    pub archetypes_total: usize,
+    /// Archetypes with enough lists to build a trustworthy consensus.
+    pub eligible: usize,
+    /// Tournament decks that classified into some archetype.
+    pub classified_decks: usize,
+    /// All eligible archetypes, sorted by share descending.
+    pub decks: Vec<MetaDeck>,
+}
+
+/// Classify the window and build a consensus list for every archetype with
+/// at least `min_lists` real lists behind it.
+pub fn compute_meta(
     rules: &FormatRules,
     decks: &[TournamentDeck],
-    top_n: usize,
-) -> Vec<MetaDeck> {
+    min_lists: usize,
+) -> MetaComputation {
     let mut buckets: HashMap<String, Vec<&TournamentDeck>> = HashMap::new();
     let mut classified_total = 0usize;
     for d in decks {
@@ -29,21 +44,30 @@ pub fn build_meta(
             classified_total += 1;
         }
     }
-    if classified_total == 0 {
-        return Vec::new();
-    }
-    let mut ranked: Vec<(String, Vec<&TournamentDeck>)> = buckets.into_iter().collect();
+    let archetypes_total = buckets.len();
+    let mut ranked: Vec<(String, Vec<&TournamentDeck>)> = buckets
+        .into_iter()
+        .filter(|(_, v)| v.len() >= min_lists.max(1))
+        .collect();
     ranked.sort_by_key(|(_, v)| std::cmp::Reverse(v.len()));
-    ranked.truncate(top_n);
+    let eligible = ranked.len();
 
-    ranked
+    let decks = ranked
         .into_iter()
         .map(|(name, lists)| {
-            let share = lists.len() as f64 / classified_total as f64;
+            let share = lists.len() as f64 / classified_total.max(1) as f64;
             let main = consensus_list(&lists);
             MetaDeck { archetype: name, share, sample_size: lists.len(), main }
         })
-        .collect()
+        .collect();
+    MetaComputation { archetypes_total, eligible, classified_decks: classified_total, decks }
+}
+
+/// Back-compat helper: the top N by share with no eligibility floor.
+pub fn build_meta(rules: &FormatRules, decks: &[TournamentDeck], top_n: usize) -> Vec<MetaDeck> {
+    let mut all = compute_meta(rules, decks, 1).decks;
+    all.truncate(top_n);
+    all
 }
 
 /// Median-count consensus: cards present in at least half the lists at

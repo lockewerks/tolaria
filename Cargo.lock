@@ -2028,6 +2028,7 @@ dependencies = [
  "mtg-ir",
  "mtg-sources",
  "mtg-stats",
+ "rand",
  "rayon",
  "serde",
  "serde_json",

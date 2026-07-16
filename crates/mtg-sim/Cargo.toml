@@ -12,6 +12,7 @@ mtg-ir.workspace = true
 mtg-stats.workspace = true
 mtg-sources.workspace = true
 anyhow.workspace = true
+rand.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true

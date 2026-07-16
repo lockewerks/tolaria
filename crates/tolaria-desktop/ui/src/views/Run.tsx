@@ -26,7 +26,7 @@ export function RunView({
   const [auto, setAuto] = useState(false);
   const [precision, setPrecision] = useState("1.0");
   const [days, setDays] = useState("60");
-  const [top, setTop] = useState("12");
+  const [gauntletSize, setGauntletSize] = useState("top-12");
   const [seed, setSeed] = useState("");
   const [earlyStop, setEarlyStop] = useState(true);
   const [perHand, setPerHand] = useState("50");
@@ -38,6 +38,7 @@ export function RunView({
   const start = async () => {
     if (!currentDeck) return;
     const vs = decks.find((d) => d.name === vsName);
+    const [selKind, selCount] = gauntletSize.split("-");
     const config: RunConfig = {
       mode,
       deck_text: currentText,
@@ -47,7 +48,8 @@ export function RunView({
       games: auto ? "auto" : games,
       precision: parseFloat(precision) || 1.0,
       days: parseInt(days) || 60,
-      top: parseInt(top) || 12,
+      top: parseInt(selCount ?? "12") || 12,
+      selection: selKind,
       seed: seed.trim() ? Number(seed.trim()) : null,
       early_stop: earlyStop,
       per_hand: parseInt(perHand) || 50,
@@ -195,9 +197,15 @@ export function RunView({
                 </label>
                 <label className="field grow">
                   <span className="cap">
-                    <Tip k="archetypes">archetypes</Tip>
+                    <Tip k="archetypes">gauntlet size</Tip>
                   </span>
-                  <input type="text" value={top} onChange={(e) => setTop(e.target.value)} />
+                  <select value={gauntletSize} onChange={(e) => setGauntletSize(e.target.value)}>
+                    <option value="top-12">top 12 most played</option>
+                    <option value="top-24">top 24 most played</option>
+                    <option value="random-12">random 12 from the universe</option>
+                    <option value="random-24">random 24 from the universe</option>
+                    <option value="all">the whole eligible universe</option>
+                  </select>
                 </label>
               </div>
             ) : null}

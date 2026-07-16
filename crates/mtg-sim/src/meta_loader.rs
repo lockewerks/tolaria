@@ -1,9 +1,43 @@
-//! Shared meta-gauntlet loading used by both the CLI and the TUI.
+//! Shared meta-gauntlet loading used by the CLI and the desktop app.
 
 use anyhow::Result;
 use mtg_data::CardPool;
 
 use crate::SimDeck;
+
+/// How to pick the gauntlet from the archetype universe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetaSelection {
+    /// The N most-played archetypes.
+    Top(usize),
+    /// N archetypes drawn uniformly at random from the eligible universe.
+    Random(usize),
+    /// Every eligible archetype.
+    All,
+}
+
+impl MetaSelection {
+    /// CLI parsing: "all" or a number, with a randomize flag.
+    pub fn parse(spec: &str, random: bool) -> Result<MetaSelection> {
+        if spec.eq_ignore_ascii_case("all") {
+            return Ok(MetaSelection::All);
+        }
+        let n: usize = spec
+            .parse()
+            .map_err(|_| anyhow::anyhow!("archetype count must be a number or 'all'"))?;
+        Ok(if random { MetaSelection::Random(n) } else { MetaSelection::Top(n) })
+    }
+}
+
+/// What the universe looked like and what was taken from it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MetaInfo {
+    pub archetypes_total: usize,
+    pub eligible: usize,
+    pub classified_decks: usize,
+    pub selected: usize,
+    pub randomized: bool,
+}
 
 pub fn creature_count(pool: &CardPool, cards: &[(mtg_data::CardId, u8)]) -> u32 {
     cards
@@ -13,26 +47,66 @@ pub fn creature_count(pool: &CardPool, cards: &[(mtg_data::CardId, u8)]) -> u32 
         .sum()
 }
 
+/// Archetypes with fewer lists than this cannot produce a trustworthy
+/// consensus list and are excluded from the universe.
+pub const MIN_LISTS: usize = 3;
+
+fn select<T>(mut items: Vec<T>, selection: MetaSelection) -> (Vec<T>, bool) {
+    match selection {
+        MetaSelection::All => (items, false),
+        MetaSelection::Top(n) => {
+            items.truncate(n);
+            (items, false)
+        }
+        MetaSelection::Random(n) => {
+            use rand::seq::SliceRandom;
+            let mut rng = rand::thread_rng();
+            items.shuffle(&mut rng);
+            items.truncate(n);
+            (items, true)
+        }
+    }
+}
+
 /// Sync sources and compute the meta gauntlet for a format. Status strings
 /// stream through the callback.
 pub fn load_meta(
     pool: &CardPool,
     format_str: &str,
     days: i64,
-    top: usize,
+    selection: MetaSelection,
     status: &mut dyn FnMut(String),
-) -> Result<Vec<SimDeck>> {
+) -> Result<(Vec<SimDeck>, MetaInfo)> {
     let format = mtg_data::Format::parse(format_str)
         .ok_or_else(|| anyhow::anyhow!("unknown format: {format_str}"))?;
     let paths = mtg_data::Paths::resolve()?;
     let agent = mtg_sources::http::agent(&mtg_data::default_user_agent());
 
     if format == mtg_data::Format::Commander {
+        // EDHREC exposes roughly its top hundred commanders; that page is
+        // the commander universe here. Each selected deck costs a fetch, so
+        // "all" is capped to keep the request count polite.
+        const COMMANDER_POOL: usize = 100;
+        const COMMANDER_ALL_CAP: usize = 30;
         status("fetching top commanders from EDHREC...".into());
-        let commanders = mtg_sources::edhrec::top_commanders(&agent, "year", top)?;
-        let total: u64 = commanders.iter().map(|c| c.num_decks.max(1)).sum();
+        let pool_size = match selection {
+            MetaSelection::Top(n) => n,
+            MetaSelection::Random(_) => COMMANDER_POOL,
+            MetaSelection::All => COMMANDER_ALL_CAP,
+        };
+        let commanders = mtg_sources::edhrec::top_commanders(&agent, "year", pool_size)?;
+        let universe = commanders.len();
+        let take = match selection {
+            MetaSelection::Top(n) | MetaSelection::Random(n) => n,
+            MetaSelection::All => COMMANDER_ALL_CAP,
+        };
+        let (picked, randomized) = select(commanders, match selection {
+            MetaSelection::Random(n) => MetaSelection::Random(n),
+            _ => MetaSelection::Top(take),
+        });
+        let total: u64 = picked.iter().map(|c| c.num_decks.max(1)).sum();
         let mut out = Vec::new();
-        for c in commanders {
+        for c in picked {
             status(format!("fetching average deck: {}", c.name));
             let Ok(list) = mtg_sources::edhrec::average_deck(&agent, &c.slug) else { continue };
             let parsed = mtg_sources::ParsedDeck {
@@ -54,7 +128,14 @@ pub fn load_meta(
                 });
             }
         }
-        return Ok(out);
+        let info = MetaInfo {
+            archetypes_total: universe,
+            eligible: universe,
+            classified_decks: 0,
+            selected: out.len(),
+            randomized,
+        };
+        return Ok((out, info));
     }
 
     let meta_dir = paths.meta_dir();
@@ -84,10 +165,21 @@ pub fn load_meta(
     let rules = mtg_sources::archetypes::load_rules(&rules_dir, format)?;
     let decks = mtg_sources::tournaments::load_decks(&cache_dir, &format.to_string(), days)?;
     status(format!("{} tournament decks in window; computing meta...", decks.len()));
-    let meta = mtg_sources::meta::build_meta(&rules, &decks, top);
+    let computation = mtg_sources::meta::compute_meta(&rules, &decks, MIN_LISTS);
+    status(format!(
+        "archetype universe: {} seen, {} eligible ({}+ lists), {} classified decks",
+        computation.archetypes_total,
+        computation.eligible,
+        MIN_LISTS,
+        computation.classified_decks
+    ));
+
+    let (mut picked, randomized) = select(computation.decks, selection);
+    // Random picks come back in shuffle order; present by share regardless.
+    picked.sort_by(|a, b| b.share.partial_cmp(&a.share).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut out = Vec::new();
-    for m in meta {
+    for m in picked {
         let parsed = mtg_sources::ParsedDeck {
             name: Some(m.archetype.clone()),
             main: m.main.clone(),
@@ -107,5 +199,12 @@ pub fn load_meta(
             });
         }
     }
-    Ok(out)
+    let info = MetaInfo {
+        archetypes_total: computation.archetypes_total,
+        eligible: computation.eligible,
+        classified_decks: computation.classified_decks,
+        selected: out.len(),
+        randomized,
+    };
+    Ok((out, info))
 }

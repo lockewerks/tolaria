@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { api, onMetaProgress } from "../api";
-import { MetaEntry, pct } from "../types";
-import { Panel } from "../components/bits";
+import { MetaEntry, MetaResponse, pct } from "../types";
+import { Panel, Tip } from "../components/bits";
 
 const FORMATS = ["modern", "standard", "pioneer", "legacy", "vintage", "pauper", "commander"];
 
 export function MetaView() {
   const [format, setFormat] = useState("modern");
   const [days, setDays] = useState("60");
-  const [top, setTop] = useState("12");
+  const [size, setSize] = useState("top-12");
   const [entries, setEntries] = useState<MetaEntry[]>([]);
+  const [universe, setUniverse] = useState<MetaResponse | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<MetaEntry | null>(null);
@@ -20,9 +21,16 @@ export function MetaView() {
     setSelected(null);
     const un = await onMetaProgress(setStatus);
     try {
-      const m = await api.fetchMeta(format, parseInt(days) || 60, parseInt(top) || 12);
-      setEntries(m);
-      setStatus(`${m.length} archetypes`);
+      const [selKind, selCount] = size.split("-");
+      const m = await api.fetchMeta(
+        format,
+        parseInt(days) || 60,
+        parseInt(selCount ?? "12") || 12,
+        selKind,
+      );
+      setEntries(m.entries);
+      setUniverse(m);
+      setStatus("");
     } catch (e) {
       setStatus(String(e));
     } finally {
@@ -51,8 +59,16 @@ export function MetaView() {
             <input type="text" value={days} onChange={(e) => setDays(e.target.value)} />
           </label>
           <label className="field grow">
-            <span className="cap">archetypes</span>
-            <input type="text" value={top} onChange={(e) => setTop(e.target.value)} />
+            <span className="cap">
+              <Tip k="archetypes">gauntlet size</Tip>
+            </span>
+            <select value={size} onChange={(e) => setSize(e.target.value)}>
+              <option value="top-12">top 12</option>
+              <option value="top-24">top 24</option>
+              <option value="random-12">random 12</option>
+              <option value="random-24">random 24</option>
+              <option value="all">all eligible</option>
+            </select>
           </label>
           <label className="field">
             <span className="cap">&nbsp;</span>
@@ -61,7 +77,14 @@ export function MetaView() {
             </button>
           </label>
         </div>
-        <div className="status-line">{status}</div>
+        <div className="status-line">
+          {status ||
+            (universe
+              ? `universe: ${universe.archetypes_total} archetypes seen in the window, ` +
+                `${universe.eligible} eligible (3+ lists), ${universe.classified_decks.toLocaleString()} decks classified; ` +
+                `showing ${entries.length}${universe.randomized ? ", randomly drawn" : ""}`
+              : "")}
+        </div>
       </Panel>
       <div className="row">
         <div className="grow">

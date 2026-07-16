@@ -31,8 +31,12 @@ struct TopArgs {
     precision: f64,
     #[arg(long, default_value_t = 60)]
     days: i64,
-    #[arg(long, default_value_t = 12)]
-    top: usize,
+    /// Gauntlet size: a number or "all".
+    #[arg(long, default_value = "12")]
+    top: String,
+    /// Draw archetypes at random from the eligible universe.
+    #[arg(long)]
+    random: bool,
     #[arg(long, default_value_t = 0x544f4c41524941)]
     seed: u64,
     /// Write full results as JSON.
@@ -81,9 +85,13 @@ enum Command {
         /// Trailing window in days.
         #[arg(long, default_value_t = 60)]
         days: i64,
-        /// How many archetypes to keep.
-        #[arg(long, default_value_t = 12)]
-        top: usize,
+        /// Gauntlet size: a number or "all" (every eligible archetype).
+        #[arg(long, default_value = "12")]
+        top: String,
+        /// Draw the archetypes at random from the eligible universe instead
+        /// of taking the most-played.
+        #[arg(long)]
+        random: bool,
     },
     /// Run your deck against the format's meta gauntlet.
     Run {
@@ -102,8 +110,12 @@ enum Command {
         precision: f64,
         #[arg(long, default_value_t = 60)]
         days: i64,
-        #[arg(long, default_value_t = 12)]
-        top: usize,
+        /// Gauntlet size: a number or "all" (every eligible archetype).
+        #[arg(long, default_value = "12")]
+        top: String,
+        /// Draw archetypes at random from the eligible universe.
+        #[arg(long)]
+        random: bool,
         #[arg(long, default_value_t = 0x544f4c41524941)]
         seed: u64,
         /// Write full results as JSON.
@@ -182,9 +194,10 @@ fn main() -> Result<()> {
             all_hands,
             per_hand,
         }) => cmd_duel(&deck, &vs, &games, precision, seed, !no_early_stop, all_hands, per_hand),
-        Some(Command::FetchMeta { format, days, top }) => {
+        Some(Command::FetchMeta { format, days, top, random }) => {
             let (pool, _) = load_pool(false, false)?;
-            let meta = load_meta(&pool, &format, days, top, true)?;
+            let selection = mtg_sim::meta_loader::MetaSelection::parse(&top, random)?;
+            let meta = load_meta(&pool, &format, days, selection, true)?;
             print_meta(&meta);
             Ok(())
         }
@@ -195,6 +208,7 @@ fn main() -> Result<()> {
             precision,
             days,
             top,
+            random,
             seed,
             json,
             no_early_stop,
@@ -204,7 +218,8 @@ fn main() -> Result<()> {
             &games,
             precision,
             days,
-            top,
+            &top,
+            random,
             seed,
             json.as_deref(),
             !no_early_stop,
@@ -221,7 +236,8 @@ fn main() -> Result<()> {
                     &t.games,
                     t.precision,
                     t.days,
-                    t.top,
+                    &t.top,
+                    t.random,
                     t.seed,
                     t.json.as_deref(),
                     !t.no_early_stop,
@@ -246,7 +262,13 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: u64) -> Result<
             user_sim.cards.retain(|(_, c)| *c > 0);
         }
     }
-    let meta = load_meta(&pool, "commander", 60, top, true)?;
+    let meta = load_meta(
+        &pool,
+        "commander",
+        60,
+        mtg_sim::meta_loader::MetaSelection::Top(top),
+        true,
+    )?;
     if meta.len() < 3 {
         anyhow::bail!("need at least 3 commander meta decks");
     }
@@ -352,7 +374,7 @@ fn load_meta(
     pool: &mtg_data::CardPool,
     format_str: &str,
     days: i64,
-    top: usize,
+    selection: mtg_sim::meta_loader::MetaSelection,
     verbose: bool,
 ) -> Result<Vec<mtg_sim::SimDeck>> {
     let mut status = |s: String| {
@@ -360,7 +382,15 @@ fn load_meta(
             println!("{s}");
         }
     };
-    mtg_sim::meta_loader::load_meta(pool, format_str, days, top, &mut status)
+    let (decks, info) =
+        mtg_sim::meta_loader::load_meta(pool, format_str, days, selection, &mut status)?;
+    if verbose && info.randomized {
+        println!(
+            "randomly drew {} of {} eligible archetypes",
+            info.selected, info.eligible
+        );
+    }
+    Ok(decks)
 }
 
 fn print_meta(meta: &[mtg_sim::SimDeck]) {
@@ -382,7 +412,8 @@ fn cmd_run(
     games_str: &str,
     precision: f64,
     days: i64,
-    top: usize,
+    top: &str,
+    random: bool,
     seed: u64,
     json: Option<&std::path::Path>,
     early_stop: bool,
@@ -393,7 +424,8 @@ fn cmd_run(
     let is_commander = mtg_data::Format::parse(format) == Some(mtg_data::Format::Commander);
     let user_sim = to_sim_deck(&user, 1.0);
 
-    let meta = load_meta(&pool, format, days, top, true)?;
+    let selection = mtg_sim::meta_loader::MetaSelection::parse(top, random)?;
+    let meta = load_meta(&pool, format, days, selection, true)?;
     if meta.is_empty() {
         anyhow::bail!("no meta decks resolved for {format}");
     }

@@ -90,9 +90,24 @@ struct RunConfig {
     precision: f64,
     days: i64,
     top: usize,
+    /// "top" | "random" | "all".
+    #[serde(default = "default_selection")]
+    selection: String,
     seed: Option<u64>,
     early_stop: bool,
     per_hand: u32,
+}
+
+fn default_selection() -> String {
+    "top".into()
+}
+
+fn to_selection(kind: &str, n: usize) -> mtg_sim::meta_loader::MetaSelection {
+    match kind {
+        "random" => mtg_sim::meta_loader::MetaSelection::Random(n),
+        "all" => mtg_sim::meta_loader::MetaSelection::All,
+        _ => mtg_sim::meta_loader::MetaSelection::Top(n),
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -438,15 +453,22 @@ async fn fetch_meta(
     format: String,
     days: i64,
     top: usize,
-) -> Result<Vec<MetaEntry>, String> {
+    selection: String,
+) -> Result<MetaResponse, String> {
     let slot = state.pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (pool, _) = get_pool(&slot)?;
         let mut status = |s: String| {
             let _ = app.emit("meta-progress", s);
         };
-        let meta = mtg_sim::meta_loader::load_meta(&pool, &format, days, top, &mut status)
-            .map_err(|e| e.to_string())?;
+        let (meta, info) = mtg_sim::meta_loader::load_meta(
+            &pool,
+            &format,
+            days,
+            to_selection(&selection, top),
+            &mut status,
+        )
+        .map_err(|e| e.to_string())?;
         let entries = meta
             .iter()
             .map(|m| {
@@ -475,10 +497,25 @@ async fn fetch_meta(
                 }
             })
             .collect();
-        Ok(entries)
+        Ok(MetaResponse {
+            entries,
+            archetypes_total: info.archetypes_total,
+            eligible: info.eligible,
+            classified_decks: info.classified_decks,
+            randomized: info.randomized,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize, Clone)]
+struct MetaResponse {
+    entries: Vec<MetaEntry>,
+    archetypes_total: usize,
+    eligible: usize,
+    classified_decks: usize,
+    randomized: bool,
 }
 
 fn deck_coverage_fracs(pool: &CardPool, deck: &SimDeck) -> (f64, f64) {
@@ -558,13 +595,37 @@ fn run_thread(
     let opponents: Vec<SimDeck> = match config.mode.as_str() {
         "gauntlet" => {
             let mut status = |s: String| emit_prep(app, &s);
-            mtg_sim::meta_loader::load_meta(&pool, &config.format, config.days, config.top, &mut status)
-                .map_err(|e| e.to_string())?
+            let (decks, info) = mtg_sim::meta_loader::load_meta(
+                &pool,
+                &config.format,
+                config.days,
+                to_selection(&config.selection, config.top),
+                &mut status,
+            )
+            .map_err(|e| e.to_string())?;
+            emit_prep(
+                app,
+                &format!(
+                    "gauntlet: {} of {} eligible archetypes ({} seen in window){}",
+                    info.selected,
+                    info.eligible,
+                    info.archetypes_total,
+                    if info.randomized { ", randomly drawn" } else { "" }
+                ),
+            );
+            decks
         }
         "pod" => {
             let mut status = |s: String| emit_prep(app, &s);
-            mtg_sim::meta_loader::load_meta(&pool, "commander", config.days, config.top, &mut status)
-                .map_err(|e| e.to_string())?
+            let (decks, _) = mtg_sim::meta_loader::load_meta(
+                &pool,
+                "commander",
+                config.days,
+                to_selection(&config.selection, config.top),
+                &mut status,
+            )
+            .map_err(|e| e.to_string())?;
+            decks
         }
         "goldfish" => Vec::new(),
         "duel" | "sweep" => {
