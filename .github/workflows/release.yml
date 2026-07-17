@@ -69,14 +69,12 @@ jobs:
           cargo build --release -p tolaria-desktop
           if ($LASTEXITCODE -ne 0) { throw "desktop build failed" }
 
-      # Both exes are signed before bundling so the installer payload is
-      # signed even if the bundler's own signCommand pass misses a file;
-      # re-signing during bundling is harmless.
-      - name: Sign binaries
+      # The CLI is bundled into the installer as a resource, so its
+      # signature must exist before packaging. The desktop exe is signed by
+      # the bundler's signCommand mid-bundle instead.
+      - name: Sign CLI
         shell: pwsh
-        run: |
-          ./scripts/sign.ps1 target/release/tolaria.exe
-          ./scripts/sign.ps1 target/release/tolaria-desktop.exe
+        run: ./scripts/sign.ps1 target/release/tolaria.exe
 
       - name: Build desktop app and installer (signs via signCommand)
         shell: pwsh
@@ -84,6 +82,14 @@ jobs:
         run: |
           & "ui\node_modules\.bin\tauri.cmd" build
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
+
+      # The bundler signs the desktop exe mid-bundle (the installer payload
+      # keeps that signed copy) but restores the binary from a pre-patch
+      # backup afterward, dropping the signature from the standalone file.
+      # Re-sign it for direct distribution.
+      - name: Re-sign standalone desktop exe
+        shell: pwsh
+        run: ./scripts/sign.ps1 target/release/tolaria-desktop.exe
 
       - name: Collect artifacts and checksums
         shell: pwsh
