@@ -76,12 +76,20 @@ jobs:
         shell: pwsh
         run: ./scripts/sign.ps1 target/release/tolaria.exe
 
+      # One retry: the bundler downloads NSIS on first use and transient
+      # network failures there have killed otherwise-green runs.
       - name: Build desktop app and installer (signs via signCommand)
         shell: pwsh
         working-directory: crates/tolaria-desktop
         run: |
-          & "ui\node_modules\.bin\tauri.cmd" build
-          if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
+          $attempt = 0
+          do {
+            & "ui\node_modules\.bin\tauri.cmd" build
+            $ok = ($LASTEXITCODE -eq 0)
+            $attempt++
+            if (-not $ok -and $attempt -lt 2) { Start-Sleep -Seconds 15 }
+          } until ($ok -or $attempt -ge 2)
+          if (-not $ok) { throw "tauri build failed after $attempt attempts" }
 
       # The bundler signs the desktop exe mid-bundle (the installer payload
       # keeps that signed copy) but restores the binary from a pre-patch
