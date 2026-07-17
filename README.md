@@ -54,6 +54,30 @@ right toughness, and the rules text might as well say "when this enters,
 gain 1 vibe." Deck coverage is stapled to every result, so a 62% win rate
 built on Proxy jank announces itself instead of quietly lying to you.
 
+The honest headline number is not the whole-card-pool percentage: Magic
+has a long tail of jank nobody sleeves, and grading it drags the average
+down for no reason. What matters is coverage of the cards people actually
+play. `tolaria coverage --format <fmt>` weights every card by how often it
+shows up in the last 60 days of real tournament decklists. Measured
+2026-07-17:
+
+| Format | Modeled as played (Full + Partial) |
+|--------|-----------------------------------|
+| Pauper | 79% |
+| Pioneer | 77% |
+| Legacy | 73% |
+| Modern | 71% |
+| Standard | 71% |
+| Vintage | 71% |
+
+`tolaria coverage --gaps N` ranks the exact unmodeled clauses by how many
+real deck slots they cost, so the next card to teach the engine is never a
+guess. And `tolaria calibrate --format <fmt>` plays the simulated meta
+against real recorded tournament match results: on Modern it currently
+lands a mean 21 percentage points off per archetype pair, and it prints
+that number rather than hiding it. Every miss ships with the reason it
+missed.
+
 Separately: the pilot is a solid curve-out heuristic. It hits land drops,
 attacks well, blocks sensibly, bolts the bird, and will absolutely not
 execute your seven-card storm line with judge-level precision. Any list
@@ -180,7 +204,39 @@ behaviors. The debugging window into the honesty clause.
 
 ### tolaria coverage
 
-Compile the entire card pool and print the tier histogram.
+Compile the card pool and print the tier histogram. With `--format <fmt>`
+it adds the play-weighted "as played" number from cached tournament
+decklists, the honest headline. With `--gaps <n>` it ranks the most
+common unmodeled clauses, weighted by real deck slots when a format is
+given: the template backlog in priority order. `--json <file>` writes the
+whole report.
+
+### tolaria calibrate
+
+Play the simulated meta against real recorded tournament match results and
+report per-archetype-pair divergence, a mean absolute divergence, skip
+counts by reason, and the structural caveats verbatim. The accuracy report
+card. Reports are saved under the data directory and reused as a trust
+signal on later runs.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--format <name>` | `modern` | which format's tournaments to calibrate against |
+| `--days <n>` | `60` | trailing tournament window |
+| `--min-games <n>` | `50` | real games an archetype pair needs to qualify |
+| `--seed <n>` | random | master seed; same seed reproduces the run |
+
+### tolaria replay
+
+Replay one game with a full turn-by-turn event log. Deterministic from the
+seed: take a game index from a run's sample-games list. `--goldfish` for a
+solitaire game, `--vs <file>` for a duel, `--out <file>` to write the log.
+
+### tolaria limits
+
+Print the divergence ledger: every known way the simulator departs from
+real Magic, grouped by category, each with the direction it skews the
+numbers. `--markdown` regenerates `docs/limits.md`.
 
 ### tolaria fetch-meta
 
