@@ -5,4 +5,7 @@ pub mod compiler;
 pub mod templates;
 pub mod text;
 
-pub use compiler::{compile, compile_pool, CoverageStats, COMPILER_VERSION};
+pub use compiler::{
+    compile, compile_pool, compile_pool_detailed, CoverageStats, PoolCompilation,
+    COMPILER_VERSION,
+};

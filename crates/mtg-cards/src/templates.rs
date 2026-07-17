@@ -51,10 +51,8 @@ pub fn parse_face(
                 let mode_line = lines[i].trim_start().trim_start_matches('*').trim();
                 i += 1;
                 match parse_sentences(mode_line, true) {
-                    Some((specs, effect, dropped)) if dropped.is_empty() => {
-                        modes.push(SpellAbility { targets: specs, effect });
-                    }
-                    Some((specs, effect, _)) => {
+                    Some((specs, effect, dropped)) => {
+                        out.unmatched.extend(dropped);
                         modes.push(SpellAbility { targets: specs, effect });
                     }
                     None => ok = false,
@@ -74,9 +72,9 @@ pub fn parse_face(
 
         if try_mechanic_line(line, cf)
             || try_enchant_line(line, cf)
-            || try_loyalty_line(line, cf)
-            || try_triggered_line(line, cf)
-            || try_activated_line(line, cf)
+            || try_loyalty_line(line, cf, &mut out.unmatched)
+            || try_triggered_line(line, cf, &mut out.unmatched)
+            || try_activated_line(line, cf, &mut out.unmatched)
             || try_static_line(line, cf, &mut out.unmatched)
             || try_keyword_line(line, cf)
         {
@@ -276,7 +274,7 @@ fn try_enchant_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
 }
 
 /// Planeswalker loyalty lines: "+1: ...", "-3: ...", "0: ...".
-fn try_loyalty_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
+fn try_loyalty_line(line: &str, cf: &mut mtg_ir::CompiledFace, riders: &mut Vec<String>) -> bool {
     let l = line.trim();
     let Some(colon) = l.find(':') else { return false };
     let head = &l[..colon];
@@ -290,7 +288,8 @@ fn try_loyalty_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
     };
     let body = l[colon + 1..].trim();
     match parse_sentences(body, true) {
-        Some((specs, effect, _dropped)) => {
+        Some((specs, effect, dropped)) => {
+            riders.extend(dropped);
             cf.activated.push(ActivatedAbility {
                 cost: AbilityCost::default(),
                 ability: SpellAbility { targets: specs, effect },
@@ -319,7 +318,7 @@ fn try_loyalty_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
     }
 }
 
-fn try_triggered_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
+fn try_triggered_line(line: &str, cf: &mut mtg_ir::CompiledFace, riders: &mut Vec<String>) -> bool {
     let l = line.trim();
     let lower_starts = l.starts_with("when ") || l.starts_with("whenever ") || l.starts_with("at ");
     if !lower_starts {
@@ -332,7 +331,8 @@ fn try_triggered_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
         .trim_start_matches("at ");
     let body = l[comma + 2..].trim();
     let Some(conds) = parse_trigger_condition(cond_text) else { return false };
-    let Some((specs, effect, _dropped)) = parse_sentences(body, true) else { return false };
+    let Some((specs, effect, dropped)) = parse_sentences(body, true) else { return false };
+    riders.extend(dropped);
     for when in conds {
         cf.triggered.push(TriggeredAbility {
             when,
@@ -432,7 +432,7 @@ fn parse_trigger_condition(c: &str) -> Option<Vec<TriggerCondition>> {
     None
 }
 
-fn try_activated_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
+fn try_activated_line(line: &str, cf: &mut mtg_ir::CompiledFace, riders: &mut Vec<String>) -> bool {
     let l = line.trim();
     let Some(colon) = l.find(": ") else { return false };
     let cost_text = &l[..colon];
@@ -459,7 +459,8 @@ fn try_activated_line(line: &str, cf: &mut mtg_ir::CompiledFace) -> bool {
             once_per_turn = true;
         }
     }
-    let Some((specs, effect, _dropped)) = parse_sentences(&body, true) else { return false };
+    let Some((specs, effect, dropped)) = parse_sentences(&body, true) else { return false };
+    riders.extend(dropped);
 
     // Pure mana production is a mana ability: no stack, used by the solver.
     if specs.is_empty() {

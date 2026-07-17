@@ -160,13 +160,32 @@ fn compile_face(card: &OracleCard, face: &OracleFace) -> (CompiledFace, Coverage
     (cf, tier, dropped)
 }
 
-/// Compile the whole pool in parallel; returns per-tier counts.
-pub fn compile_pool(pool: &mtg_data::CardPool) -> CoverageStats {
+/// A whole-pool compilation keeping the per-card detail the coverage and
+/// gap reports need, not just the tier histogram.
+pub struct PoolCompilation {
+    pub stats: CoverageStats,
+    /// (card id, tier, dropped clauses) in pool iteration order.
+    pub cards: Vec<(mtg_data::CardId, CoverageTier, Vec<Box<str>>)>,
+}
+
+/// Compile every pool card passing the filter, in parallel. The filter
+/// carves format-legal subsets without a second entry point.
+pub fn compile_pool_detailed(
+    pool: &mtg_data::CardPool,
+    filter: impl Fn(&OracleCard) -> bool + Sync,
+) -> PoolCompilation {
     use rayon::prelude::*;
-    let cards: Vec<&OracleCard> = pool.iter().map(|(_, c)| c).collect();
-    let tiers: Vec<CoverageTier> = cards.par_iter().map(|c| compile(c).tier).collect();
+    let cards: Vec<(mtg_data::CardId, &OracleCard)> =
+        pool.iter().filter(|(_, c)| filter(c)).collect();
+    let compiled: Vec<(mtg_data::CardId, CoverageTier, Vec<Box<str>>)> = cards
+        .par_iter()
+        .map(|(id, c)| {
+            let cc = compile(c);
+            (*id, cc.tier, cc.dropped)
+        })
+        .collect();
     let mut stats = CoverageStats::default();
-    for t in tiers {
+    for (_, t, _) in &compiled {
         match t {
             CoverageTier::Full => stats.full += 1,
             CoverageTier::Partial => stats.partial += 1,
@@ -174,7 +193,12 @@ pub fn compile_pool(pool: &mtg_data::CardPool) -> CoverageStats {
             CoverageTier::Unplayable => stats.unplayable += 1,
         }
     }
-    stats
+    PoolCompilation { stats, cards: compiled }
+}
+
+/// Compile the whole pool in parallel; returns per-tier counts.
+pub fn compile_pool(pool: &mtg_data::CardPool) -> CoverageStats {
+    compile_pool_detailed(pool, |_| true).stats
 }
 
 #[derive(Debug, Default, Clone, Copy)]
