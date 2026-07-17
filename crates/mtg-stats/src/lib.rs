@@ -207,4 +207,74 @@ mod tests {
         assert!(early_stop_decided(140, 0, 200, 200));
         assert!(!early_stop_decided(105, 0, 200, 200));
     }
+
+    #[test]
+    fn wilson_bounds() {
+        // Floating point can nudge a clamped bound a hair past p_hat at the
+        // wins=0 / wins=games boundaries, so compare with a slack.
+        const EPS: f64 = 1e-9;
+        for &games in &[1u32, 10, 100, 1000] {
+            for wins in 0..=games {
+                let (lo, hi) = wilson(wins as f64, games as f64, 1.96);
+                let p_hat = wins as f64 / games as f64;
+                let center = (lo + hi) / 2.0;
+                assert!(lo >= -EPS, "lo<0 at {wins}/{games}: {lo}");
+                assert!(hi <= 1.0 + EPS, "hi>1 at {wins}/{games}: {hi}");
+                assert!(lo <= hi + EPS, "lo>hi at {wins}/{games}: {lo} {hi}");
+                assert!(
+                    lo <= p_hat + EPS && p_hat <= hi + EPS,
+                    "p_hat outside CI at {wins}/{games}: {lo} {p_hat} {hi}"
+                );
+                assert!(
+                    lo <= center + EPS && center <= hi + EPS,
+                    "center outside CI at {wins}/{games}: {lo} {center} {hi}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn wilson_width_shrinks() {
+        // p_hat fixed at 0.5, more games must tighten the interval.
+        let width = |games: u32| {
+            let (lo, hi) = wilson(games as f64 / 2.0, games as f64, 1.96);
+            hi - lo
+        };
+        let w100 = width(100);
+        let w1000 = width(1000);
+        let w10000 = width(10000);
+        assert!(w100 > w1000, "{w100} !> {w1000}");
+        assert!(w1000 > w10000, "{w1000} !> {w10000}");
+    }
+
+    #[test]
+    fn early_stop_floor() {
+        // Never stop below the floor, even on a lopsided sample.
+        assert!(!early_stop_decided(99, 0, 100, 500));
+        // At or above the floor, stop once the CI clears 0.5 either way.
+        assert!(early_stop_decided(400, 0, 500, 500));
+        assert!(early_stop_decided(100, 0, 500, 500));
+        // Dead even at the floor stays undecided.
+        assert!(!early_stop_decided(250, 0, 500, 500));
+        // Draws are half-wins: an all-draw sample reads as even, no decision.
+        assert!(!early_stop_decided(0, 500, 500, 500));
+    }
+
+    #[test]
+    fn draws_as_half_wins() {
+        let m = MatchupStats {
+            wins: 0,
+            losses: 0,
+            draws: 10,
+            games: 10,
+            ..Default::default()
+        };
+        assert_eq!(m.win_rate(), 0.5);
+        let (lo, hi) = m.ci95();
+        assert!(lo < 0.5 && hi > 0.5, "CI not straddling 0.5: {lo} {hi}");
+        assert!(
+            ((lo + hi) / 2.0 - 0.5).abs() < 1e-9,
+            "CI not centered on 0.5: {lo} {hi}"
+        );
+    }
 }
