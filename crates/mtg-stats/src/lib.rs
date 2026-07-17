@@ -1,6 +1,8 @@
 //! Pure math: Wilson confidence intervals, sequential early stopping,
 //! matchup aggregation, meta-share weighting.
 
+pub mod trust;
+
 use serde::{Deserialize, Serialize};
 
 /// Wilson score interval for a binomial proportion.
@@ -81,6 +83,27 @@ pub struct MatchupStats {
     /// Sum of the opponent's final life across the user's losses.
     #[serde(default)]
     pub loss_opp_life_sum: i64,
+    /// Draws forced by hitting the turn cap: grindy games scored as draws,
+    /// not resolved. Undercounts the slower deck.
+    #[serde(default)]
+    pub turn_cap_draws: u32,
+    /// Draws forced by hitting the decision cap (loops).
+    #[serde(default)]
+    pub decision_cap_draws: u32,
+    /// A few reproducible games worth replaying: first win, first loss,
+    /// longest, first panic. Recorded by seed, replayed on demand.
+    #[serde(default)]
+    pub sample_games: Vec<SampleGame>,
+}
+
+/// A game worth looking at, identified by its index so it can be replayed
+/// deterministically. No trace stored: replay regenerates it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SampleGame {
+    pub game: u32,
+    /// "win" | "loss" | "draw" | "panic".
+    pub outcome: String,
+    pub turns: u32,
 }
 
 impl MatchupStats {

@@ -575,3 +575,37 @@ svg .base-line {
   color: var(--ink-2);
   font-size: 12px;
 }
+
+.warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.trust-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.drop-row {
+  border-top: 1px solid var(--border);
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.drop-row summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.drop-clause {
+  color: var(--ink-2);
+  opacity: 0.8;
+  padding: 2px 0 2px 16px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}

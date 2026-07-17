@@ -12,6 +12,57 @@ export interface Limit {
   impact: string;
 }
 
+export interface TierCounts {
+  full: number;
+  partial: number;
+  proxy: number;
+  unplayable: number;
+}
+
+export interface DroppedCard {
+  name: string;
+  count: number;
+  tier: string;
+  clauses: string[];
+}
+
+export interface DeckTrust {
+  name: string;
+  tiers: TierCounts;
+  coverage_full_frac: number;
+  coverage_playable_frac: number;
+  pilot_warning: boolean;
+  pilot_grade?: number | null;
+  dropped: DroppedCard[];
+  list: [string, number][];
+}
+
+export interface RenderedWarning {
+  code: string;
+  severity: "info" | "caution" | "bias";
+  text: string;
+}
+
+export interface TrustReport {
+  schema_version: number;
+  tolaria_version: string;
+  compiler_version: number;
+  ci_method: string;
+  seed: number;
+  gauntlet_seeded: boolean;
+  user_deck: DeckTrust;
+  opponents: DeckTrust[];
+  early_stopped_matchups: number;
+  panics: number;
+  turn_cap_draws: number;
+  decision_cap_draws: number;
+  turn_cap: number;
+  decision_cap: number;
+  total_games: number;
+  warnings: RenderedWarning[];
+  calibration?: unknown;
+}
+
 export interface CardRow {
   name: string;
   count: number;
@@ -149,6 +200,9 @@ export interface RunResult {
   goldfish: GoldfishStats | null;
   seed: number;
   deck_pilot_warning?: boolean;
+  trust?: TrustReport | null;
+  deck_text?: string | null;
+  vs_text?: string | null;
 }
 
 export interface RunMeta {

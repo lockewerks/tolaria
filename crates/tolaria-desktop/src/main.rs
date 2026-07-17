@@ -179,6 +179,16 @@ struct RunResult {
     /// The user's own deck trips the low-creature pilot heuristic.
     #[serde(default)]
     deck_pilot_warning: bool,
+    /// The reliability manifest: coverage, warnings, caps, calibration.
+    /// Absent on runs recorded before trust reports existed.
+    #[serde(default)]
+    trust: Option<mtg_stats::trust::TrustReport>,
+    /// The user's decklist text, kept so History runs stay replayable.
+    #[serde(default)]
+    deck_text: Option<String>,
+    /// The opponent decklist text for duel/sweep replays.
+    #[serde(default)]
+    vs_text: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -762,6 +772,9 @@ fn run_thread(
         goldfish: None,
         seed: master_seed,
         deck_pilot_warning: user.pilot_warning,
+        trust: None,
+        deck_text: Some(config.deck_text.clone()),
+        vs_text: config.vs_text.clone(),
     };
 
     match config.mode.as_str() {
@@ -843,6 +856,35 @@ fn run_thread(
     result.cancelled = cancel.load(Ordering::Relaxed);
     done.store(true, Ordering::Relaxed);
     let _ = poller.join();
+
+    // Build the trust manifest from whichever stats variant ran.
+    {
+        let opp_refs: Vec<&SimDeck> = opponents.iter().collect();
+        let (matchups, panics): (Vec<mtg_stats::MatchupStats>, Option<u32>) =
+            if let Some(g) = &result.gauntlet {
+                (g.matchups.clone(), None)
+            } else if let Some(m) = &result.pod {
+                (vec![m.clone()], None)
+            } else if let Some(gf) = &result.goldfish {
+                (Vec::new(), Some(gf.panics))
+            } else {
+                (Vec::new(), None)
+            };
+        let mut trust = mtg_sim::trust::build_trust_report(
+            &pool, &user, &opp_refs, &matchups, &cfg,
+            config.mode == "gauntlet" || config.mode == "pod",
+            panics,
+        );
+        if let Some(gf) = &result.goldfish {
+            trust.total_games = gf.games;
+            trust.warnings =
+                mtg_sim::trust::render_all(&mtg_sim::trust::standard_warnings(&trust));
+        }
+        if let Some(report) = mtg_sim::calibrate::load_latest_calibration(&config.format) {
+            trust.calibration = serde_json::to_value(&report).ok();
+        }
+        result.trust = Some(trust);
+    }
 
     // Persist history.
     if let Ok(dir) = runs_dir() {

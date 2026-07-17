@@ -203,4 +203,49 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     text: "The most restrictive format where the whole list is legal and the size rules pass. A Standard-legal deck is legal everywhere, so Standard is its truest home.",
     group: "Results",
   },
+  "trust-report": {
+    title: "Trust report",
+    text: "Everything the result knows about its own reliability: coverage with tier counts for both sides, pilot flags, seed, confidence-interval method, compiler version, panics, and cap-forced draws. The same manifest rides every export, so a saved run confesses its weaknesses wherever it travels.",
+    group: "Coverage",
+  },
+  "warn-low_opp_coverage": {
+    title: "Low opponent coverage",
+    text: "The opponents' lists are under 85% modeled on average. Cards the engine cannot play are dead slots for them, so your win rate reads higher than it should.",
+    group: "Coverage",
+  },
+  "warn-low_own_coverage": {
+    title: "Low own coverage",
+    text: "Your list is under 85% modeled. Your own unmodeled cards do nothing in simulation, dragging your win rate below the real deck.",
+    group: "Coverage",
+  },
+  "warn-own_pilot_fidelity": {
+    title: "Your pilot fidelity",
+    text: "Your deck has fewer than 10 creatures, tripping the crude combo/control heuristic. The greedy pilot may not play its real lines, so its win rates lean pessimistic for you.",
+    group: "Coverage",
+  },
+  "warn-opp_pilot_fidelity": {
+    title: "Opponent pilot fidelity",
+    text: "One or more opponent archetypes trip the low-creature heuristic. The pilot underplays them, so your win rate against them reads high.",
+    group: "Coverage",
+  },
+  "warn-early_stopped": {
+    title: "Early stop",
+    text: "A matchup stopped once its confidence interval cleared 50%, because more games would not change the verdict. This tightens throughput, not accuracy.",
+    group: "Coverage",
+  },
+  "warn-panics": {
+    title: "Panics",
+    text: "Some games crashed the engine and were dropped from the sample. The win rate is over the survivors; a nonzero count means a card interaction needs fixing.",
+    group: "Coverage",
+  },
+  "warn-cap_forced_draws": {
+    title: "Cap-forced draws",
+    text: "Games that hit the turn or decision cap are scored as draws, not resolved. Grindy control mirrors and combo loops are undercounted when this fires.",
+    group: "Coverage",
+  },
+  "warn-proxy_heavy_own_deck": {
+    title: "Proxy-heavy deck",
+    text: "A tenth or more of your deck is Proxy or Unplayable tier: correct bodies with unmodeled text, or dead slots. Those cards do less in simulation than on paper.",
+    group: "Coverage",
+  },
 };

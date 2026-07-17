@@ -9,7 +9,7 @@ import {
   weightedWinRate,
   winRate,
 } from "../types";
-import { Panel, Stat, Tip } from "../components/bits";
+import { Panel, Stat, Tip, TrustPanel, WarningList } from "../components/bits";
 import {
   CountBars,
   ForestPlot,
@@ -286,23 +286,37 @@ export function ResultsView({ result }: { result: RunResult | null }) {
         <Stat value={pct(result.deck_playable, 0)} label="deck playable coverage" tip="playable" />
       </div>
 
-      {g && avgCov < 0.85 ? (
-        <div className="error">
-          average opponent coverage is {pct(avgCov, 0)}: treat absolute win rates with care
-        </div>
-      ) : null}
-      {result.deck_pilot_warning ? (
-        <div className="error">
-          <Tip k="pilot">low pilot fidelity</Tip>: this deck has fewer than 10 creatures, so the
-          greedy pilot may not play its real lines; its win rates lean low
-        </div>
-      ) : null}
+      {result.trust ? (
+        <WarningList warnings={result.trust.warnings} />
+      ) : (
+        <>
+          {g && avgCov < 0.85 ? (
+            <div className="error">
+              average opponent coverage is {pct(avgCov, 0)}: treat absolute win rates with care
+            </div>
+          ) : null}
+          {result.deck_pilot_warning ? (
+            <div className="error">
+              <Tip k="pilot">low pilot fidelity</Tip>: this deck has fewer than 10 creatures, so the
+              greedy pilot may not play its real lines; its win rates lean low
+            </div>
+          ) : null}
+        </>
+      )}
       {result.seed ? (
         <div className="hint" style={{ marginBottom: 10 }}>
           <Tip k="seed">master seed</Tip> {result.seed}: enter it in the run setup to replay these
           exact games
         </div>
       ) : null}
+
+      {result.trust ? (
+        <TrustPanel trust={result.trust} />
+      ) : (
+        <div className="hint" style={{ marginBottom: 10 }}>
+          recorded before trust reports existed
+        </div>
+      )}
 
       {g ? (
         <>

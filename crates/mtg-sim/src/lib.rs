@@ -7,6 +7,7 @@ pub mod goldfish;
 pub mod limits;
 pub mod meta_loader;
 pub mod sweep;
+pub mod trust;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -163,6 +164,37 @@ pub fn game_seed(master: u64, matchup: u64, game: u32) -> u64 {
     splitmix64(master ^ splitmix64(matchup).wrapping_add(game as u64))
 }
 
+/// One finished game's outcome, gathered in the parallel map and folded
+/// into stats sequentially so aggregation order stays deterministic.
+struct GameRow {
+    winner: Option<u8>,
+    turns: u32,
+    decisions: u32,
+    first: u8,
+    my_mulls: u8,
+    reason: u8,
+    my_life: i32,
+    opp_life: i32,
+}
+
+/// Keep a small, deterministic set of games worth replaying: the first of
+/// each outcome kind plus the longest game seen. Bounded and order-stable.
+fn note_sample(samples: &mut Vec<mtg_stats::SampleGame>, game: u32, outcome: &str, turns: u32) {
+    let have_kind = samples.iter().any(|s| s.outcome == outcome);
+    if !have_kind {
+        samples.push(mtg_stats::SampleGame { game, outcome: outcome.to_string(), turns });
+        return;
+    }
+    // Replace the recorded "long" exemplar when this game ran longer.
+    if let Some(longest) = samples.iter_mut().find(|s| s.outcome == "long") {
+        if turns > longest.turns {
+            *longest = mtg_stats::SampleGame { game, outcome: "long".to_string(), turns };
+        }
+    } else if turns > samples.iter().map(|s| s.turns).max().unwrap_or(0) {
+        samples.push(mtg_stats::SampleGame { game, outcome: "long".to_string(), turns });
+    }
+}
+
 /// Live counters a UI can poll while a matchup runs.
 #[derive(Debug, Default)]
 pub struct MatchupProgress {
@@ -213,7 +245,7 @@ pub fn run_matchup(
             break;
         }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
-        let results: Vec<Option<(Option<u8>, u32, u8, u8, u8, i32, i32)>> = (next_game..block_end)
+        let results: Vec<(u32, Option<GameRow>)> = (next_game..block_end)
             .into_par_iter()
             .map(|g| {
                 let seed = game_seed(cfg.master_seed, matchup_index, g);
@@ -228,67 +260,77 @@ pub fn run_matchup(
                     };
                     mtg_engine::run_game(db, &lists, &setup, &mut agents, seed)
                 }));
-                match out {
-                    Ok(o) => {
-                        let winner = match o.end {
-                            GameEnd::Winner(s) => Some(s),
-                            GameEnd::Draw => None,
-                        };
-                        let reason = winner
-                            .map(|w| {
-                                let loser = 1 - w as usize;
-                                loss_reason_index(o.losses.get(loser).copied().flatten())
-                            })
-                            .unwrap_or(4);
-                        Some((
-                            winner,
-                            o.turns,
-                            o.first,
-                            o.mulligans.first().copied().unwrap_or(0),
-                            reason,
-                            o.life.first().copied().unwrap_or(0),
-                            o.life.get(1).copied().unwrap_or(0),
-                        ))
+                let row = out.ok().map(|o| {
+                    let winner = match o.end {
+                        GameEnd::Winner(s) => Some(s),
+                        GameEnd::Draw => None,
+                    };
+                    let reason = winner
+                        .map(|w| {
+                            let loser = 1 - w as usize;
+                            loss_reason_index(o.losses.get(loser).copied().flatten())
+                        })
+                        .unwrap_or(4);
+                    GameRow {
+                        winner,
+                        turns: o.turns,
+                        decisions: o.decisions,
+                        first: o.first,
+                        my_mulls: o.mulligans.first().copied().unwrap_or(0),
+                        reason,
+                        my_life: o.life.first().copied().unwrap_or(0),
+                        opp_life: o.life.get(1).copied().unwrap_or(0),
                     }
-                    Err(_) => None,
-                }
+                });
+                (g, row)
             })
             .collect();
 
-        for r in results {
+        for (g, r) in results {
             stats.games += 1;
             match r {
-                Some((winner, turns, first, my_mulls, reason, my_life, opp_life)) => {
-                    stats.turns_sum += turns as u64;
-                    stats.my_mulligans += my_mulls as u32;
-                    stats.turn_hist[(turns as usize).saturating_sub(1).min(39)] += 1;
-                    stats.mull_hist[(my_mulls as usize).min(3)] += 1;
-                    let on_play = first == 0;
+                Some(row) => {
+                    stats.turns_sum += row.turns as u64;
+                    stats.my_mulligans += row.my_mulls as u32;
+                    stats.turn_hist[(row.turns as usize).saturating_sub(1).min(39)] += 1;
+                    stats.mull_hist[(row.my_mulls as usize).min(3)] += 1;
+                    let on_play = row.first == 0;
                     if on_play {
                         stats.on_play_games += 1;
                     }
-                    match winner {
+                    match row.winner {
                         Some(0) => {
                             stats.wins += 1;
-                            stats.win_reasons[reason as usize] += 1;
-                            stats.win_life_sum += my_life as i64;
-                            stats.win_opp_life_sum += opp_life as i64;
+                            stats.win_reasons[row.reason as usize] += 1;
+                            stats.win_life_sum += row.my_life as i64;
+                            stats.win_opp_life_sum += row.opp_life as i64;
                             if on_play {
                                 stats.on_play_wins += 1;
                             }
+                            note_sample(&mut stats.sample_games, g, "win", row.turns);
                         }
                         Some(_) => {
                             stats.losses += 1;
-                            stats.loss_reasons[reason as usize] += 1;
-                            stats.loss_life_sum += my_life as i64;
-                            stats.loss_opp_life_sum += opp_life as i64;
+                            stats.loss_reasons[row.reason as usize] += 1;
+                            stats.loss_life_sum += row.my_life as i64;
+                            stats.loss_opp_life_sum += row.opp_life as i64;
+                            note_sample(&mut stats.sample_games, g, "loss", row.turns);
                         }
-                        None => stats.draws += 1,
+                        None => {
+                            stats.draws += 1;
+                            if row.turns > cfg.rules.turn_cap {
+                                stats.turn_cap_draws += 1;
+                            } else if row.decisions > cfg.rules.decision_cap {
+                                stats.decision_cap_draws += 1;
+                            }
+                            note_sample(&mut stats.sample_games, g, "draw", row.turns);
+                        }
                     }
                 }
                 None => {
                     stats.panics += 1;
                     stats.games -= 1;
+                    note_sample(&mut stats.sample_games, g, "panic", 0);
                 }
             }
         }
@@ -358,7 +400,7 @@ pub fn run_pod(
             break;
         }
         let block_end = (next_game + BLOCK).min(cfg.games_cap);
-        let results: Vec<Option<(Option<u8>, u32, u8, i32)>> = (next_game..block_end)
+        let results: Vec<(u32, Option<(Option<u8>, u32, u32, u8, i32)>)> = (next_game..block_end)
             .into_par_iter()
             .map(|g| {
                 let seed = game_seed(cfg.master_seed, u64::MAX, g);
@@ -385,22 +427,20 @@ pub fn run_pod(
                     };
                     mtg_engine::run_game(db, &lists, &setup, &mut agents, seed)
                 }));
-                match out {
-                    Ok(o) => {
-                        let winner = match o.end {
-                            GameEnd::Winner(s) => Some(s),
-                            GameEnd::Draw => None,
-                        };
-                        Some((winner, o.turns, o.first, o.life.first().copied().unwrap_or(0)))
-                    }
-                    Err(_) => None,
-                }
+                let row = out.ok().map(|o| {
+                    let winner = match o.end {
+                        GameEnd::Winner(s) => Some(s),
+                        GameEnd::Draw => None,
+                    };
+                    (winner, o.turns, o.decisions, o.first, o.life.first().copied().unwrap_or(0))
+                });
+                (g, row)
             })
             .collect();
-        for r in results {
+        for (g, r) in results {
             stats.games += 1;
             match r {
-                Some((winner, turns, first, my_life)) => {
+                Some((winner, turns, decisions, first, my_life)) => {
                     stats.turns_sum += turns as u64;
                     if first == 0 {
                         stats.on_play_games += 1;
@@ -412,17 +452,28 @@ pub fn run_pod(
                             if first == 0 {
                                 stats.on_play_wins += 1;
                             }
+                            note_sample(&mut stats.sample_games, g, "win", turns);
                         }
                         Some(_) => {
                             stats.losses += 1;
                             stats.loss_life_sum += my_life as i64;
+                            note_sample(&mut stats.sample_games, g, "loss", turns);
                         }
-                        None => stats.draws += 1,
+                        None => {
+                            stats.draws += 1;
+                            if turns > cfg.rules.turn_cap {
+                                stats.turn_cap_draws += 1;
+                            } else if decisions > cfg.rules.decision_cap {
+                                stats.decision_cap_draws += 1;
+                            }
+                            note_sample(&mut stats.sample_games, g, "draw", turns);
+                        }
                     }
                 }
                 None => {
                     stats.panics += 1;
                     stats.games -= 1;
+                    note_sample(&mut stats.sample_games, g, "panic", 0);
                 }
             }
         }

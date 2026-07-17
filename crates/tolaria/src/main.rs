@@ -119,6 +119,9 @@ enum Command {
         /// reproduction).
         #[arg(long)]
         seed: Option<u64>,
+        /// Write full results (with trust report) as JSON.
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
     },
     /// Sync tournament data and print the computed metagame.
     FetchMeta {
@@ -187,6 +190,9 @@ enum Command {
         /// reproduction).
         #[arg(long)]
         seed: Option<u64>,
+        /// Write full results (with trust report) as JSON.
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
     },
     /// Simulate one deck against another, both from decklist files.
     Duel {
@@ -218,7 +224,50 @@ enum Command {
         /// Continuations per hand in --all-hands mode.
         #[arg(long, default_value_t = 50)]
         per_hand: u32,
+        /// Write full results (with trust report) as JSON.
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
     },
+}
+
+/// The exported result envelope: a trust report plus the mode's stats,
+/// flattened so existing consumers still read the stats fields at top level.
+#[derive(serde::Serialize)]
+struct RunExport<'a, T: serde::Serialize> {
+    schema_version: u32,
+    trust: &'a mtg_stats::trust::TrustReport,
+    #[serde(flatten)]
+    stats: &'a T,
+}
+
+fn write_export<T: serde::Serialize>(
+    path: &std::path::Path,
+    trust: &mtg_stats::trust::TrustReport,
+    stats: &T,
+) -> Result<()> {
+    let export = RunExport { schema_version: mtg_stats::trust::SCHEMA_VERSION, trust, stats };
+    std::fs::write(path, serde_json::to_vec_pretty(&export)?)?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Load the newest calibration for a format into the report's slot, if any.
+fn attach_calibration(trust: &mut mtg_stats::trust::TrustReport, format: &str) {
+    if let Some(report) = mtg_sim::calibrate::load_latest_calibration(format) {
+        trust.calibration = serde_json::to_value(&report).ok();
+    }
+}
+
+/// Print warnings the same way everywhere: severity-prefixed lines.
+fn print_warnings(warnings: &[mtg_stats::trust::RenderedWarning]) {
+    for w in warnings {
+        let prefix = match w.severity {
+            mtg_stats::trust::Severity::Info => "note",
+            mtg_stats::trust::Severity::Caution => "caution",
+            mtg_stats::trust::Severity::Bias => "warning",
+        };
+        println!("{prefix}: {}", w.text);
+    }
 }
 
 /// Use the given seed, or roll fresh entropy and say so. Masked to 53 bits
@@ -265,7 +314,18 @@ fn main() -> Result<()> {
             no_early_stop,
             all_hands,
             per_hand,
-        }) => cmd_duel(&deck, &vs, &games, precision, seed, !no_early_stop, all_hands, per_hand),
+            json,
+        }) => cmd_duel(
+            &deck,
+            &vs,
+            &games,
+            precision,
+            seed,
+            !no_early_stop,
+            all_hands,
+            per_hand,
+            json.as_deref(),
+        ),
         Some(Command::FetchMeta { format, days, top, random, seed }) => {
             let (pool, _) = load_pool(false, false)?;
             let selection = mtg_sim::meta_loader::MetaSelection::parse(&top, random)?;
@@ -297,8 +357,12 @@ fn main() -> Result<()> {
             json.as_deref(),
             !no_early_stop,
         ),
-        Some(Command::Pod { deck, games, top, seed }) => cmd_pod(&deck, games, top, seed),
-        Some(Command::Goldfish { deck, games, seed }) => cmd_goldfish(&deck, games, seed),
+        Some(Command::Pod { deck, games, top, seed, json }) => {
+            cmd_pod(&deck, games, top, seed, json.as_deref())
+        }
+        Some(Command::Goldfish { deck, games, seed, json }) => {
+            cmd_goldfish(&deck, games, seed, json.as_deref())
+        }
         None => {
             let t = cli.top;
             match t.deck {
@@ -321,7 +385,13 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: Option<u64>) -> Result<()> {
+fn cmd_pod(
+    deck: &std::path::Path,
+    games: u32,
+    top: usize,
+    seed: Option<u64>,
+    json: Option<&std::path::Path>,
+) -> Result<()> {
     let seed = resolve_seed(seed);
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
@@ -388,6 +458,22 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: Option<u64>) ->
         "wins {} / losses {} / draws {} / panics {} / avg {:.1} turns",
         stats.wins, stats.losses, stats.draws, stats.panics, stats.avg_turns()
     );
+
+    let opp_refs: Vec<&mtg_sim::SimDeck> = meta.iter().collect();
+    let trust = mtg_sim::trust::build_trust_report(
+        &pool,
+        &user_sim,
+        &opp_refs,
+        std::slice::from_ref(&stats),
+        &cfg,
+        true,
+        None,
+    );
+    println!();
+    print_warnings(&trust.warnings);
+    if let Some(path) = json {
+        write_export(path, &trust, &stats)?;
+    }
     Ok(())
 }
 
@@ -408,7 +494,12 @@ fn launch_desktop() -> Result<()> {
     }
 }
 
-fn cmd_goldfish(deck: &std::path::Path, games: u32, seed: Option<u64>) -> Result<()> {
+fn cmd_goldfish(
+    deck: &std::path::Path,
+    games: u32,
+    seed: Option<u64>,
+    json: Option<&std::path::Path>,
+) -> Result<()> {
     let seed = resolve_seed(seed);
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
@@ -460,6 +551,18 @@ fn cmd_goldfish(deck: &std::path::Path, games: u32, seed: Option<u64>) -> Result
         total_mulls as f64 / g.games.max(1) as f64,
         g.mull_hist.first().copied().unwrap_or(0)
     );
+
+    // Goldfish has no MatchupStats; pass its panic count directly and set
+    // the game total for the warning thresholds.
+    let mut trust =
+        mtg_sim::trust::build_trust_report(&pool, &user_sim, &[], &[], &cfg, false, Some(g.panics));
+    trust.total_games = g.games;
+    trust.warnings = mtg_sim::trust::render_all(&mtg_sim::trust::standard_warnings(&trust));
+    println!();
+    print_warnings(&trust.warnings);
+    if let Some(path) = json {
+        write_export(path, &trust, &g)?;
+    }
     Ok(())
 }
 
@@ -591,23 +694,24 @@ fn cmd_run(
         stats.weighted_win_rate() * 100.0
     );
     println!("(* early stop, ! low pilot fidelity, opp cov = opponent playable coverage)");
-    let avg_cov: f64 = stats
-        .matchups
-        .iter()
-        .map(|m| m.opp_coverage_playable_frac)
-        .sum::<f64>()
-        / stats.matchups.len().max(1) as f64;
-    if avg_cov < 0.85 {
-        println!(
-            "warning: average opponent coverage is {:.0}%; treat absolute win rates with care",
-            avg_cov * 100.0
-        );
-    }
+
+    let opp_refs: Vec<&mtg_sim::SimDeck> = meta.iter().collect();
+    let mut trust = mtg_sim::trust::build_trust_report(
+        &pool,
+        &user_sim,
+        &opp_refs,
+        &stats.matchups,
+        &cfg,
+        true,
+        None,
+    );
+    attach_calibration(&mut trust, format);
+    println!();
+    print_warnings(&trust.warnings);
     explain_stopping(&stats.matchups, games, auto, precision, early_stop);
 
     if let Some(path) = json {
-        std::fs::write(path, serde_json::to_vec_pretty(&stats)?)?;
-        println!("wrote {}", path.display());
+        write_export(path, &trust, &stats)?;
     }
     Ok(())
 }
@@ -648,6 +752,7 @@ fn cmd_duel(
     early_stop: bool,
     all_hands: bool,
     per_hand: u32,
+    json: Option<&std::path::Path>,
 ) -> Result<()> {
     let seed = resolve_seed(seed);
     let (games, auto) = parse_games(games_str)?;
@@ -732,7 +837,23 @@ fn cmd_duel(
             stats.avg_loss_opp_life()
         );
     }
-    explain_stopping(&[stats], games, auto, precision, early_stop);
+
+    let trust = mtg_sim::trust::build_trust_report(
+        &pool,
+        &user_sim,
+        &[&opp_sim],
+        std::slice::from_ref(&stats),
+        &cfg,
+        false,
+        None,
+    );
+    println!();
+    print_warnings(&trust.warnings);
+    explain_stopping(std::slice::from_ref(&stats), games, auto, precision, early_stop);
+
+    if let Some(path) = json {
+        write_export(path, &trust, &stats)?;
+    }
     Ok(())
 }
 
