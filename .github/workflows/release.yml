@@ -53,9 +53,15 @@ jobs:
         working-directory: crates/tolaria-desktop/ui
         run: npm ci
 
+      # Sequential: the desktop crate's build script validates that the
+      # bundled CLI resource exists, so the CLI must be fully linked first.
       - name: Build binaries
         shell: pwsh
-        run: cargo build --release -p tolaria -p tolaria-desktop
+        run: |
+          cargo build --release -p tolaria
+          if ($LASTEXITCODE -ne 0) { throw "cli build failed" }
+          cargo build --release -p tolaria-desktop
+          if ($LASTEXITCODE -ne 0) { throw "desktop build failed" }
 
       # Both exes are signed before bundling so the installer payload is
       # signed even if the bundler's own signCommand pass misses a file;
