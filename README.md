@@ -56,11 +56,14 @@ built on Proxy jank announces itself instead of quietly lying to you.
 
 Separately: the pilot is a solid curve-out heuristic. It hits land drops,
 attacks well, blocks sensibly, bolts the bird, and will absolutely not
-execute your seven-card storm line with judge-level precision. Combo and
-control decks get flagged with a pilot-fidelity warning rather than a
-confidently wrong number. If your win condition requires holding up three
-counterspells and a smug expression, read those matchups with squinted
-eyes.
+execute your seven-card storm line with judge-level precision. Any list
+light on creatures gets flagged with a pilot-fidelity warning, yours
+included, rather than a confidently wrong number. The flag is a crude
+creature-count heuristic and creature-based combo slips past it. A flagged
+opponent loses more than it should, which flatters you; your own deck
+flagged means the number sells you short. If your win condition requires
+holding up three counterspells and a smug expression, read those matchups
+with squinted eyes.
 
 ## Performance
 

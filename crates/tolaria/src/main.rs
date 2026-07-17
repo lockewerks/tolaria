@@ -95,6 +95,9 @@ enum Command {
         /// of taking the most-played.
         #[arg(long)]
         random: bool,
+        /// Master seed pinning random draws; omit for a fresh one.
+        #[arg(long)]
+        seed: Option<u64>,
     },
     /// Run your deck against the format's meta gauntlet.
     Run {
@@ -216,10 +219,11 @@ fn main() -> Result<()> {
             all_hands,
             per_hand,
         }) => cmd_duel(&deck, &vs, &games, precision, seed, !no_early_stop, all_hands, per_hand),
-        Some(Command::FetchMeta { format, days, top, random }) => {
+        Some(Command::FetchMeta { format, days, top, random, seed }) => {
             let (pool, _) = load_pool(false, false)?;
             let selection = mtg_sim::meta_loader::MetaSelection::parse(&top, random)?;
-            let meta = load_meta(&pool, &format, days, selection, true)?;
+            let seed = resolve_seed(seed);
+            let meta = load_meta(&pool, &format, days, selection, seed, true)?;
             print_meta(&meta);
             Ok(())
         }
@@ -274,7 +278,7 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: Option<u64>) ->
     let seed = resolve_seed(seed);
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
-    let mut user_sim = to_sim_deck(&user, 1.0);
+    let mut user_sim = to_sim_deck(&pool, &user, 1.0);
     if user_sim.commander.is_none() {
         // Convention: the first card is the commander when no section says.
         if let Some((first, _)) = user_sim.cards.first().copied() {
@@ -290,12 +294,22 @@ fn cmd_pod(deck: &std::path::Path, games: u32, top: usize, seed: Option<u64>) ->
         "commander",
         60,
         mtg_sim::meta_loader::MetaSelection::Top(top),
+        seed,
         true,
     )?;
     if meta.len() < 3 {
         anyhow::bail!("need at least 3 commander meta decks");
     }
     print_meta(&meta);
+    let (_, _, coverages) = mtg_sim::build_db(&pool, &[&user_sim]);
+    println!(
+        "\n{}: {} cards, coverage {:.0}% full / {:.0}% playable{}",
+        user_sim.name,
+        coverages[0].total(),
+        coverages[0].full_frac() * 100.0,
+        coverages[0].playable_frac() * 100.0,
+        pilot_suffix(&user_sim)
+    );
     let cfg = mtg_sim::SimConfig {
         games_cap: games,
         floor: games,
@@ -351,7 +365,16 @@ fn cmd_goldfish(deck: &std::path::Path, games: u32, seed: Option<u64>) -> Result
     let seed = resolve_seed(seed);
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
-    let user_sim = to_sim_deck(&user, 1.0);
+    let user_sim = to_sim_deck(&pool, &user, 1.0);
+    let (_, _, coverages) = mtg_sim::build_db(&pool, &[&user_sim]);
+    println!(
+        "{}: {} cards, coverage {:.0}% full / {:.0}% playable{}",
+        user_sim.name,
+        coverages[0].total(),
+        coverages[0].full_frac() * 100.0,
+        coverages[0].playable_frac() * 100.0,
+        pilot_suffix(&user_sim)
+    );
     let cfg = mtg_sim::SimConfig {
         games_cap: games,
         floor: games,
@@ -399,6 +422,7 @@ fn load_meta(
     format_str: &str,
     days: i64,
     selection: mtg_sim::meta_loader::MetaSelection,
+    seed: u64,
     verbose: bool,
 ) -> Result<Vec<mtg_sim::SimDeck>> {
     let mut status = |s: String| {
@@ -407,7 +431,7 @@ fn load_meta(
         }
     };
     let (decks, info) =
-        mtg_sim::meta_loader::load_meta(pool, format_str, days, selection, &mut status)?;
+        mtg_sim::meta_loader::load_meta(pool, format_str, days, selection, seed, &mut status)?;
     if verbose && info.randomized {
         println!(
             "randomly drew {} of {} eligible archetypes",
@@ -447,10 +471,10 @@ fn cmd_run(
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
     let is_commander = mtg_data::Format::parse(format) == Some(mtg_data::Format::Commander);
-    let user_sim = to_sim_deck(&user, 1.0);
+    let user_sim = to_sim_deck(&pool, &user, 1.0);
 
     let selection = mtg_sim::meta_loader::MetaSelection::parse(top, random)?;
-    let meta = load_meta(&pool, format, days, selection, true)?;
+    let meta = load_meta(&pool, format, days, selection, seed, true)?;
     if meta.is_empty() {
         anyhow::bail!("no meta decks resolved for {format}");
     }
@@ -458,11 +482,12 @@ fn cmd_run(
 
     let (_, _, coverages) = mtg_sim::build_db(&pool, &[&user_sim]);
     println!(
-        "\n{}: {} cards, coverage {:.0}% full / {:.0}% playable",
+        "\n{}: {} cards, coverage {:.0}% full / {:.0}% playable{}",
         user_sim.name,
         coverages[0].total(),
         coverages[0].full_frac() * 100.0,
-        coverages[0].playable_frac() * 100.0
+        coverages[0].playable_frac() * 100.0,
+        pilot_suffix(&user_sim)
     );
 
     let rules = if is_commander {
@@ -540,13 +565,29 @@ fn cmd_run(
     Ok(())
 }
 
-fn to_sim_deck(d: &mtg_sources::ResolvedDeck, share: f64) -> mtg_sim::SimDeck {
+fn to_sim_deck(
+    pool: &mtg_data::CardPool,
+    d: &mtg_sources::ResolvedDeck,
+    share: f64,
+) -> mtg_sim::SimDeck {
+    // The same crude heuristic meta opponents get; the user's own deck is
+    // not exempt from it.
+    let creatures = mtg_sim::meta_loader::creature_count(pool, &d.main);
     mtg_sim::SimDeck {
         name: d.name.clone(),
         cards: d.main.clone(),
         commander: d.commander,
         meta_share: share,
-        pilot_warning: false,
+        pilot_warning: mtg_sources::meta::pilot_warning(creatures),
+    }
+}
+
+/// Coverage-line suffix confessing when the greedy pilot is suspect.
+fn pilot_suffix(d: &mtg_sim::SimDeck) -> &'static str {
+    if d.pilot_warning {
+        ", low pilot fidelity (under 10 creatures; the greedy pilot may misplay this list)"
+    } else {
+        ""
     }
 }
 
@@ -566,23 +607,25 @@ fn cmd_duel(
     let (pool, _) = load_pool(false, false)?;
     let user = mtg_sources::load_deck_file(&pool, deck)?;
     let opp = mtg_sources::load_deck_file(&pool, vs)?;
-    let user_sim = to_sim_deck(&user, 1.0);
-    let opp_sim = to_sim_deck(&opp, 1.0);
+    let user_sim = to_sim_deck(&pool, &user, 1.0);
+    let opp_sim = to_sim_deck(&pool, &opp, 1.0);
 
     let (_, _, coverages) = mtg_sim::build_db(&pool, &[&user_sim, &opp_sim]);
     println!(
-        "{}: {} cards, coverage {:.0}% full / {:.0}% playable",
+        "{}: {} cards, coverage {:.0}% full / {:.0}% playable{}",
         user_sim.name,
         coverages[0].total(),
         coverages[0].full_frac() * 100.0,
-        coverages[0].playable_frac() * 100.0
+        coverages[0].playable_frac() * 100.0,
+        pilot_suffix(&user_sim)
     );
     println!(
-        "{}: {} cards, coverage {:.0}% full / {:.0}% playable",
+        "{}: {} cards, coverage {:.0}% full / {:.0}% playable{}",
         opp_sim.name,
         coverages[1].total(),
         coverages[1].full_frac() * 100.0,
-        coverages[1].playable_frac() * 100.0
+        coverages[1].playable_frac() * 100.0,
+        pilot_suffix(&opp_sim)
     );
 
     let cfg = mtg_sim::SimConfig {

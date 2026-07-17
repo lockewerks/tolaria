@@ -56,6 +56,7 @@ struct DeckInfo {
     avg_mana_value: f64,
     formats: Vec<FormatFit>,
     recommended: String,
+    pilot_warning: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -175,6 +176,9 @@ struct RunResult {
     /// The master seed actually used (rolled when the user left it blank).
     #[serde(default)]
     seed: u64,
+    /// The user's own deck trips the low-creature pilot heuristic.
+    #[serde(default)]
+    deck_pilot_warning: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -273,9 +277,13 @@ fn build_deck_info(pool: &CardPool, text: &str, fallback: &str) -> DeckInfo {
         avg_mana_value: 0.0,
         formats: Vec::new(),
         recommended: String::new(),
+        pilot_warning: false,
     };
     let Some(resolved) = resolved else { return info };
     info.commander = resolved.commander.map(|c| pool.get(c).name.to_string());
+    info.pilot_warning = mtg_sources::meta::pilot_warning(
+        mtg_sim::meta_loader::creature_count(pool, &resolved.main),
+    );
 
     let mut colors = mtg_ir::ColorSet::empty();
     for (cid, count) in &resolved.main {
@@ -378,13 +386,15 @@ fn build_deck_info(pool: &CardPool, text: &str, fallback: &str) -> DeckInfo {
     info
 }
 
-fn to_sim_deck(resolved: &mtg_sources::ResolvedDeck) -> SimDeck {
+fn to_sim_deck(pool: &CardPool, resolved: &mtg_sources::ResolvedDeck) -> SimDeck {
+    // Same heuristic the meta opponents get; the user's deck is not exempt.
+    let creatures = mtg_sim::meta_loader::creature_count(pool, &resolved.main);
     SimDeck {
         name: resolved.name.clone(),
         cards: resolved.main.clone(),
         commander: resolved.commander,
         meta_share: 1.0,
-        pilot_warning: false,
+        pilot_warning: mtg_sources::meta::pilot_warning(creatures),
     }
 }
 
@@ -475,6 +485,7 @@ async fn fetch_meta(
             &format,
             days,
             to_selection(&selection, top),
+            roll_seed(),
             &mut status,
         )
         .map_err(|e| e.to_string())?;
@@ -587,7 +598,7 @@ fn run_thread(
     if !unresolved.is_empty() {
         emit_prep(app, &format!("{} unresolved names dropped", unresolved.len()));
     }
-    let mut user = to_sim_deck(&resolved);
+    let mut user = to_sim_deck(&pool, &resolved);
 
     // Pod convention: first card is the commander when no section names one.
     if config.mode == "pod" && user.commander.is_none() {
@@ -600,6 +611,10 @@ fn run_thread(
         }
     }
 
+    // The master seed is fixed before opponents load so random gauntlet
+    // draws are pinned by it too.
+    let master_seed = config.seed.unwrap_or_else(roll_seed);
+
     // Opponents.
     let opponents: Vec<SimDeck> = match config.mode.as_str() {
         "gauntlet" => {
@@ -609,6 +624,7 @@ fn run_thread(
                 &config.format,
                 config.days,
                 to_selection(&config.selection, config.top),
+                master_seed,
                 &mut status,
             )
             .map_err(|e| e.to_string())?;
@@ -631,6 +647,7 @@ fn run_thread(
                 "commander",
                 config.days,
                 to_selection(&config.selection, config.top),
+                master_seed,
                 &mut status,
             )
             .map_err(|e| e.to_string())?;
@@ -643,7 +660,7 @@ fn run_thread(
             let (vres, _) =
                 mtg_sources::deck_import::resolve_deck_lossy(&pool, &vparsed, "opponent");
             let vres = vres.ok_or("no cards resolved from the opponent decklist")?;
-            vec![to_sim_deck(&vres)]
+            vec![to_sim_deck(&pool, &vres)]
         }
         m => return Err(format!("unknown mode: {m}")),
     };
@@ -663,7 +680,6 @@ fn run_thread(
     } else {
         mtg_engine::RulesConfig::duel()
     };
-    let master_seed = config.seed.unwrap_or_else(roll_seed);
     let cfg = mtg_sim::SimConfig {
         games_cap: games,
         floor: if auto { 1000.min(games) } else { 200.min(games) },
@@ -745,6 +761,7 @@ fn run_thread(
         pod: None,
         goldfish: None,
         seed: master_seed,
+        deck_pilot_warning: user.pilot_warning,
     };
 
     match config.mode.as_str() {

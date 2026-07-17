@@ -50,7 +50,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   seed: {
     title: "Seed",
-    text: "The master random seed. Every shuffle and decision derives from it deterministically: the same seed with the same decks reproduces identical results, game for game. Left blank, a fresh seed is rolled from OS entropy and recorded with the results, so interesting runs stay reproducible. Random archetype draws are the one thing a seed does not pin down.",
+    text: "The master random seed. Every shuffle and decision derives from it deterministically: the same seed with the same decks reproduces identical results, game for game. Left blank, a fresh seed is rolled from OS entropy and recorded with the results, so interesting runs stay reproducible. Random archetype draws are pinned by it too, so the seed reproduces the whole gauntlet.",
     group: "Setup",
   },
   window: {
@@ -105,7 +105,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   pilot: {
     title: "Pilot fidelity",
-    text: "The built-in pilot plays a solid curve-out game but cannot execute combo chains or control finesse. Archetypes flagged here lose more than they should, so treat those win rates as optimistic for you.",
+    text: "The built-in pilot plays a solid curve-out game but cannot execute combo chains or control finesse. The flag is a crude heuristic (fewer than 10 mainboard creatures) applied to your deck and opponents alike; creature-based combo slips through it. A flagged opponent loses more than it should, inflating your number. Your own deck flagged means your number leans low instead.",
     group: "Results",
   },
   "dealt-prob": {
@@ -165,7 +165,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   "tier-proxy": {
     title: "Proxy",
-    text: "Correct body, cost, and keywords; the rules text is treated as flavor. A 2/2 that says something clever is just a 2/2 here.",
+    text: "Correct body, cost, and keywords; the rules text is not modeled. Every ignored line is listed on the card's row in the Decks view, so you can see exactly what a 2/2 with delusions of grandeur is not doing.",
     group: "Coverage",
   },
   "tier-unplayable": {

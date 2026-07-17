@@ -291,6 +291,12 @@ export function ResultsView({ result }: { result: RunResult | null }) {
           average opponent coverage is {pct(avgCov, 0)}: treat absolute win rates with care
         </div>
       ) : null}
+      {result.deck_pilot_warning ? (
+        <div className="error">
+          <Tip k="pilot">low pilot fidelity</Tip>: this deck has fewer than 10 creatures, so the
+          greedy pilot may not play its real lines; its win rates lean low
+        </div>
+      ) : null}
       {result.seed ? (
         <div className="hint" style={{ marginBottom: 10 }}>
           <Tip k="seed">master seed</Tip> {result.seed}: enter it in the run setup to replay these

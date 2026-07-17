@@ -95,6 +95,12 @@ export function RunView({
       {error ? <div className="error">{error}</div> : null}
 
       <Panel title={`configure${currentDeck ? `: ${currentDeck.name}` : ""}`}>
+        {currentDeck?.pilot_warning ? (
+          <div className="hint">
+            this deck trips the low-creature pilot heuristic: the built-in pilot may not play its
+            real lines, so its results lean pessimistic (a flagged opponent leans the other way)
+          </div>
+        ) : null}
         <div className="row">
           <div className="grow">
             <label className="field">

@@ -22,7 +22,10 @@ pub struct SimDeck {
     pub cards: Vec<(CardId, u8)>,
     pub commander: Option<CardId>,
     pub meta_share: f64,
-    /// Set for archetypes a greedy pilot plays badly (combo, control).
+    /// Set when the list has fewer than 10 mainboard creatures: a crude
+    /// proxy for decks whose real lines (combo chains, control finesse) a
+    /// greedy agent cannot execute. Applied to the user's deck and meta
+    /// opponents alike; creature-based combo passes undetected.
     pub pilot_warning: bool,
 }
 
@@ -145,7 +148,7 @@ fn loss_reason_index(r: Option<mtg_engine::LossReason>) -> u8 {
     }
 }
 
-fn splitmix64(mut x: u64) -> u64 {
+pub(crate) fn splitmix64(mut x: u64) -> u64 {
     x = x.wrapping_add(0x9e3779b97f4a7c15);
     let mut z = x;
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);

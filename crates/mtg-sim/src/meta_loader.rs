@@ -51,7 +51,7 @@ pub fn creature_count(pool: &CardPool, cards: &[(mtg_data::CardId, u8)]) -> u32 
 /// consensus list and are excluded from the universe.
 pub const MIN_LISTS: usize = 3;
 
-fn select<T>(mut items: Vec<T>, selection: MetaSelection) -> (Vec<T>, bool) {
+fn select<T>(mut items: Vec<T>, selection: MetaSelection, seed: u64) -> (Vec<T>, bool) {
     match selection {
         MetaSelection::All => (items, false),
         MetaSelection::Top(n) => {
@@ -59,9 +59,14 @@ fn select<T>(mut items: Vec<T>, selection: MetaSelection) -> (Vec<T>, bool) {
             (items, false)
         }
         MetaSelection::Random(n) => {
-            use rand::seq::SliceRandom;
-            let mut rng = rand::thread_rng();
-            items.shuffle(&mut rng);
+            // Seeded Fisher-Yates over a splitmix64 stream so random
+            // gauntlet composition reproduces with the master seed.
+            let mut s = crate::splitmix64(seed ^ 0x4d45_5441); // "META"
+            for i in (1..items.len()).rev() {
+                s = crate::splitmix64(s);
+                let j = (s % (i as u64 + 1)) as usize;
+                items.swap(i, j);
+            }
             items.truncate(n);
             (items, true)
         }
@@ -69,12 +74,14 @@ fn select<T>(mut items: Vec<T>, selection: MetaSelection) -> (Vec<T>, bool) {
 }
 
 /// Sync sources and compute the meta gauntlet for a format. Status strings
-/// stream through the callback.
+/// stream through the callback. The seed pins random archetype draws so a
+/// recorded master seed reproduces the whole gauntlet, not just the games.
 pub fn load_meta(
     pool: &CardPool,
     format_str: &str,
     days: i64,
     selection: MetaSelection,
+    seed: u64,
     status: &mut dyn FnMut(String),
 ) -> Result<(Vec<SimDeck>, MetaInfo)> {
     let format = mtg_data::Format::parse(format_str)
@@ -100,10 +107,14 @@ pub fn load_meta(
             MetaSelection::Top(n) | MetaSelection::Random(n) => n,
             MetaSelection::All => COMMANDER_ALL_CAP,
         };
-        let (picked, randomized) = select(commanders, match selection {
-            MetaSelection::Random(n) => MetaSelection::Random(n),
-            _ => MetaSelection::Top(take),
-        });
+        let (picked, randomized) = select(
+            commanders,
+            match selection {
+                MetaSelection::Random(n) => MetaSelection::Random(n),
+                _ => MetaSelection::Top(take),
+            },
+            seed,
+        );
         let total: u64 = picked.iter().map(|c| c.num_decks.max(1)).sum();
         let mut out = Vec::new();
         for c in picked {
@@ -174,7 +185,7 @@ pub fn load_meta(
         computation.classified_decks
     ));
 
-    let (mut picked, randomized) = select(computation.decks, selection);
+    let (mut picked, randomized) = select(computation.decks, selection, seed);
     // Random picks come back in shuffle order; present by share regardless.
     picked.sort_by(|a, b| b.share.partial_cmp(&a.share).unwrap_or(std::cmp::Ordering::Equal));
 

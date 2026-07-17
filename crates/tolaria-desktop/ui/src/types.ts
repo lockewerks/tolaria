@@ -35,6 +35,7 @@ export interface DeckInfo {
   avg_mana_value: number;
   formats: FormatFit[];
   recommended: string;
+  pilot_warning: boolean;
 }
 
 export interface DeckFile {
@@ -139,6 +140,7 @@ export interface RunResult {
   pod: MatchupStats | null;
   goldfish: GoldfishStats | null;
   seed: number;
+  deck_pilot_warning?: boolean;
 }
 
 export interface RunMeta {
