@@ -3,6 +3,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type {
   DeckFile,
   DeckInfo,
+  Limit,
   MetaResponse,
   PoolInfo,
   ProgressPayload,
@@ -23,6 +24,7 @@ export const api = {
   cancelRun: () => invoke<void>("cancel_run"),
   listRuns: () => invoke<RunMeta[]>("list_runs"),
   loadRun: (file: string) => invoke<RunResult>("load_run", { file }),
+  listLimits: () => invoke<Limit[]>("list_limits"),
 };
 
 export function onRunProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {

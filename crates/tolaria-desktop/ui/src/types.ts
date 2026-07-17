@@ -4,6 +4,14 @@ export interface PoolInfo {
   source: string;
 }
 
+export interface Limit {
+  id: string;
+  category: string;
+  rule_ref: string;
+  summary: string;
+  impact: string;
+}
+
 export interface CardRow {
   name: string;
   count: number;

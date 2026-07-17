@@ -901,6 +901,29 @@ async fn list_runs() -> Result<Vec<RunMeta>, String> {
     Ok(out)
 }
 
+#[derive(Serialize, Clone)]
+struct LimitDto {
+    id: String,
+    category: String,
+    rule_ref: String,
+    summary: String,
+    impact: String,
+}
+
+#[tauri::command]
+fn list_limits() -> Vec<LimitDto> {
+    mtg_sim::limits::all_limits()
+        .into_iter()
+        .map(|l| LimitDto {
+            id: l.id.to_string(),
+            category: l.category.label().to_string(),
+            rule_ref: l.rule_ref.to_string(),
+            summary: l.summary.to_string(),
+            impact: l.impact.to_string(),
+        })
+        .collect()
+}
+
 #[tauri::command]
 async fn load_run(file: String) -> Result<RunResult, String> {
     if file.contains('/') || file.contains('\\') || file.contains("..") {
@@ -926,7 +949,8 @@ fn main() {
             start_run,
             cancel_run,
             list_runs,
-            load_run
+            load_run,
+            list_limits
         ])
         .run(tauri::generate_context!())
         .expect("tolaria desktop failed to start");
