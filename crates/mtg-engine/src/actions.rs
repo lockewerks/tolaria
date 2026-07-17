@@ -508,7 +508,7 @@ fn cast_spell(
             }
         }
         let view = View { gs, seat };
-        x = agents.get(seat).choose_x(&view, max_x).min(max_x);
+        x = agents.get(seat).choose_x(&view, card, face, max_x).min(max_x);
     }
 
     // Modes and targets.

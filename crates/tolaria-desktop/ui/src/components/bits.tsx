@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { GLOSSARY } from "../glossary";
 import type { RenderedWarning, TrustReport } from "../types";
-import { pct } from "../types";
+import { pct, pilotGradeLabel } from "../types";
 
 /** Dwell tooltip: hover for just over a second and the explanation pops. */
 export function Tip({ k, children }: { k: string; children: ReactNode }) {
@@ -66,7 +66,13 @@ export function TrustPanel({ trust }: { trust: TrustReport }) {
             <div>
               <b>{u.name}</b>: {pct(u.coverage_full_frac, 0)} full / {pct(u.coverage_playable_frac, 0)}{" "}
               playable ({t.full} full, {t.partial} partial, {t.proxy} proxy, {t.unplayable} unplayable)
-              {u.pilot_warning ? " · low pilot fidelity" : ""}
+              {u.pilot_grade != null ? (
+                <>
+                  {" · "}
+                  <Tip k="pilot">pilot fidelity {pilotGradeLabel(u.pilot_grade)}</Tip>
+                  {u.pilot_factors?.length ? ` (${u.pilot_factors.join(", ")})` : ""}
+                </>
+              ) : null}
             </div>
             {trust.opponents.length ? (
               <div>

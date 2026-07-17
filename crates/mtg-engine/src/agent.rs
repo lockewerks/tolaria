@@ -73,7 +73,9 @@ pub trait Agent: Send {
         (0..choose).collect()
     }
 
-    fn choose_x(&mut self, _v: &View, max: u32) -> u32 {
+    /// Choose X for the spell being cast. `source` and `face` identify it
+    /// so the agent can read its effect and cap X at something useful.
+    fn choose_x(&mut self, _v: &View, _source: ObjectId, _face: u8, max: u32) -> u32 {
         max
     }
 
@@ -100,7 +102,9 @@ pub trait Agent: Send {
 #[derive(Debug, Clone, Copy)]
 pub enum YesNo {
     PayWard,
-    CounterUnlessPay,
+    /// The controller of `spell` may pay `cost_mv` mana to save it from a
+    /// counter. The values let the agent weigh the spell against the tax.
+    CounterUnlessPay { spell: ObjectId, cost_mv: u32 },
     OptionalTrigger,
     ReturnCommanderToCommandZone,
 }

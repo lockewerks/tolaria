@@ -6,6 +6,7 @@ pub mod coverage;
 pub mod goldfish;
 pub mod limits;
 pub mod meta_loader;
+pub mod pilot;
 pub mod replay;
 pub mod sweep;
 pub mod trust;

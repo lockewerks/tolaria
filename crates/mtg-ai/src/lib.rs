@@ -424,12 +424,44 @@ impl Agent for GreedyAgent {
         ranked.into_iter().take(n).collect()
     }
 
-    fn choose_x(&mut self, _v: &View, max: u32) -> u32 {
-        max
+    fn choose_x(&mut self, v: &View, source: ObjectId, face: u8, max: u32) -> u32 {
+        // For X damage, spending past what can die or kill is wasted mana;
+        // cap at the largest useful target. Everything else (draw X, X
+        // tokens) still wants the maximum.
+        let card = v.card_of(source);
+        let cf = &card.compiled.faces[(face as usize).min(card.compiled.faces.len() - 1)];
+        let is_x_damage = cf
+            .spell
+            .as_ref()
+            .map(|sa| effect_is_x_damage(&sa.effect))
+            .unwrap_or(false);
+        if !is_x_damage {
+            return max;
+        }
+        let mut useful = 0;
+        for opp in v.opponents() {
+            useful = useful.max(v.life(opp).max(0) as u32);
+            for &id in v.battlefield(opp) {
+                if v.obj(id).is_creature() {
+                    useful = useful.max(v.obj(id).chars.toughness.max(0) as u32);
+                }
+            }
+        }
+        max.min(useful.max(1))
     }
 
-    fn yes_no(&mut self, _v: &View, _prompt: mtg_engine::agent::YesNo) -> bool {
-        true
+    fn yes_no(&mut self, v: &View, prompt: mtg_engine::agent::YesNo) -> bool {
+        use mtg_engine::agent::YesNo;
+        match prompt {
+            // Pay to save a real threat or when the tax is cheaper than the
+            // spell is worth; let a small spell die to the counter.
+            YesNo::CounterUnlessPay { spell, cost_mv } => {
+                spell_value(v, spell, 0) >= 8 || mana_value(v, spell) as u32 > cost_mv
+            }
+            // Optional upside triggers and paying to keep the commander are
+            // both worth it by default; ward is modeled elsewhere.
+            _ => true,
+        }
     }
 
     fn scry_bottom(&mut self, v: &View, looked: &[ObjectId]) -> Vec<ObjectId> {
@@ -454,8 +486,62 @@ impl Agent for GreedyAgent {
         ranked.into_iter().take(n).collect()
     }
 
-    fn search_pick(&mut self, _v: &View, candidates: &[ObjectId], count: usize) -> Vec<ObjectId> {
-        candidates.iter().copied().take(count).collect()
+    fn search_pick(&mut self, v: &View, candidates: &[ObjectId], count: usize) -> Vec<ObjectId> {
+        // A tutor should fetch what the board wants, not the first cards in
+        // library order. Grab lands while mana-light, otherwise the best
+        // castable spells.
+        let lands_in_play = v
+            .battlefield(v.seat)
+            .iter()
+            .filter(|&&id| v.obj(id).is_land())
+            .count() as i32;
+        let mut ranked = candidates.to_vec();
+        ranked.sort_by(|&a, &b| {
+            search_score(v, b, lands_in_play)
+                .cmp(&search_score(v, a, lands_in_play))
+                .then(a.0.cmp(&b.0))
+        });
+        ranked.into_iter().take(count).collect()
+    }
+}
+
+/// True when a spell's effect deals a variable (X) amount of damage.
+fn effect_is_x_damage(e: &Effect) -> bool {
+    match e {
+        Effect::DealDamage { n, .. } => matches!(n, mtg_ir::ValueExpr::X),
+        Effect::Seq(list) => list.iter().any(effect_is_x_damage),
+        Effect::Modal { modes, .. } => modes.iter().any(|m| effect_is_x_damage(&m.effect)),
+        _ => false,
+    }
+}
+
+/// Score a tutor candidate: lands when land-hungry, else castable value.
+fn search_score(v: &View, id: ObjectId, lands_in_play: i32) -> i32 {
+    if is_land(v, id) {
+        // Falls off as lands accumulate; near zero once we have five.
+        return (120 - 20 * lands_in_play.min(6)).max(0);
+    }
+    let mut score = spell_value(v, id, 0);
+    if mana_value(v, id) <= lands_in_play + 1 {
+        score += 15;
+    }
+    score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::effect_is_x_damage;
+    use mtg_ir::{Effect, Recipient, ValueExpr};
+
+    #[test]
+    fn x_damage_detected_through_wrappers() {
+        let x = Effect::DealDamage { n: ValueExpr::X, to: Recipient::Target(0) };
+        assert!(effect_is_x_damage(&x));
+        assert!(effect_is_x_damage(&Effect::Seq(vec![x.clone()])));
+
+        let fixed = Effect::DealDamage { n: ValueExpr::Fixed(3), to: Recipient::Target(0) };
+        assert!(!effect_is_x_damage(&fixed));
+        assert!(!effect_is_x_damage(&Effect::Noop));
     }
 }
 

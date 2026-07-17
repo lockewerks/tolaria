@@ -506,7 +506,11 @@ pub fn exec(gs: &mut GameState, agents: &mut Agents, ctx: &mut Ctx, effect: &Eff
                     if let Some(cost) = unless_pay {
                         if let Some(plan) = crate::mana_pay::solve(gs, owner_seat, cost, 0) {
                             let view = View { gs, seat: owner_seat };
-                            if agents.get(owner_seat).yes_no(&view, YesNo::CounterUnlessPay) {
+                            let prompt = YesNo::CounterUnlessPay {
+                                spell: id,
+                                cost_mv: cost.mana_value(0),
+                            };
+                            if agents.get(owner_seat).yes_no(&view, prompt) {
                                 crate::mana_pay::execute(gs, owner_seat, &plan, cost, 0);
                                 return;
                             }

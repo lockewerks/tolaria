@@ -41,9 +41,12 @@ pub struct DeckTrust {
     pub coverage_full_frac: f64,
     pub coverage_playable_frac: f64,
     pub pilot_warning: bool,
-    /// 0 best .. 3 worst, filled once the pilot grade exists.
+    /// 0 best .. 3 worst composite pilot-difficulty grade.
     #[serde(default)]
     pub pilot_grade: Option<u8>,
+    /// Human-readable factors behind the grade, e.g. "9 tutors".
+    #[serde(default)]
+    pub pilot_factors: Vec<String>,
     /// Per-card dropped clauses. Populated for the user's deck; left empty
     /// for opponents (their detail is reachable via the Meta view).
     #[serde(default)]

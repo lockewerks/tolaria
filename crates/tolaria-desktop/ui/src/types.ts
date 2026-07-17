@@ -33,9 +33,13 @@ export interface DeckTrust {
   coverage_playable_frac: number;
   pilot_warning: boolean;
   pilot_grade?: number | null;
+  pilot_factors?: string[];
   dropped: DroppedCard[];
   list: [string, number][];
 }
+
+export const pilotGradeLabel = (g?: number | null): string =>
+  g == null ? "" : ["high", "fair", "low", "very low"][g] ?? "";
 
 export interface RenderedWarning {
   code: string;

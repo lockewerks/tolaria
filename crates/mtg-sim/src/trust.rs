@@ -41,12 +41,14 @@ pub fn deck_trust(pool: &CardPool, deck: &SimDeck, full_detail: bool) -> DeckTru
         }
     }
     let total = tiers.total().max(1) as f64;
+    let difficulty = crate::pilot::pilot_difficulty(pool, &deck.cards);
     DeckTrust {
         name: deck.name.clone(),
         coverage_full_frac: tiers.full as f64 / total,
         coverage_playable_frac: tiers.playable() as f64 / total,
         pilot_warning: deck.pilot_warning,
-        pilot_grade: None,
+        pilot_grade: Some(difficulty.grade),
+        pilot_factors: difficulty.factors,
         dropped,
         list,
         tiers,
