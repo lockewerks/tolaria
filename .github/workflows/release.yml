@@ -53,13 +53,18 @@ jobs:
         working-directory: crates/tolaria-desktop/ui
         run: npm ci
 
-      - name: Build CLI
+      - name: Build binaries
         shell: pwsh
-        run: cargo build --release -p tolaria
+        run: cargo build --release -p tolaria -p tolaria-desktop
 
-      - name: Sign CLI
+      # Both exes are signed before bundling so the installer payload is
+      # signed even if the bundler's own signCommand pass misses a file;
+      # re-signing during bundling is harmless.
+      - name: Sign binaries
         shell: pwsh
-        run: ./scripts/sign.ps1 target/release/tolaria.exe
+        run: |
+          ./scripts/sign.ps1 target/release/tolaria.exe
+          ./scripts/sign.ps1 target/release/tolaria-desktop.exe
 
       - name: Build desktop app and installer (signs via signCommand)
         shell: pwsh
