@@ -4,6 +4,7 @@
 pub mod calibrate;
 pub mod coverage;
 pub mod goldfish;
+pub mod limits;
 pub mod meta_loader;
 pub mod sweep;
 

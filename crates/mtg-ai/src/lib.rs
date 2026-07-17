@@ -6,10 +6,35 @@ use mtg_engine::actions::LegalAction;
 use mtg_engine::combat::Defender;
 use mtg_engine::state::{ObjectId, Target, Zone};
 use mtg_engine::{Agent, View};
-use mtg_ir::{CardTypes, Effect, KeywordSet, TargetSpec, Whose};
+use mtg_ir::{CardTypes, Effect, KeywordSet, Limit, LimitCategory::Pilot, TargetSpec, Whose};
 use smallvec::SmallVec;
 
 pub struct GreedyAgent;
+
+/// Where the greedy pilot is known to play worse than a person would.
+pub const LIMITS: &[Limit] = &[
+    Limit {
+        id: "pilot.no-search",
+        category: Pilot,
+        rule_ref: "-",
+        summary: "every decision is a one-ply scoring pass with no lookahead, sequencing plan, or combo execution",
+        impact: "decks that reward planned lines (combo, control) win less than a skilled pilot would take",
+    },
+    Limit {
+        id: "pilot.sorcery-speed",
+        category: Pilot,
+        rule_ref: "-",
+        summary: "the pilot casts on its own main phases and does not hold instants for the opponent's turn",
+        impact: "reactive decks that want to hold up removal or counters play too proactively",
+    },
+    Limit {
+        id: "pilot.fidelity-heuristic",
+        category: Pilot,
+        rule_ref: "-",
+        summary: "the low-fidelity flag is a creature count (under 10), not real archetype analysis",
+        impact: "creature-based combo is not flagged; a fair creature-light deck is flagged the same as degenerate combo",
+    },
+];
 
 fn is_land(v: &View, id: ObjectId) -> bool {
     let o = v.obj(id);
