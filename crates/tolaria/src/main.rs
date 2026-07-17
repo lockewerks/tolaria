@@ -82,6 +82,26 @@ enum Command {
         #[arg(long)]
         json: Option<std::path::PathBuf>,
     },
+    /// Compare simulated matchup win rates against real tournament match
+    /// results from the local cache: the accuracy report card.
+    Calibrate {
+        #[arg(long, default_value = "modern")]
+        format: String,
+        /// Trailing window in days.
+        #[arg(long, default_value_t = 60)]
+        days: i64,
+        /// Minimum real games an archetype pair needs to qualify.
+        #[arg(long, default_value_t = 50)]
+        min_games: u32,
+        /// Master seed; omit for a fresh random seed (printed for
+        /// reproduction).
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Also write the report JSON here (it lands in the data dir
+        /// regardless).
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
+    },
     /// Goldfish: play against a passive opponent to measure the deck as it
     /// stands (kill turn, consistency). Any deck size.
     Goldfish {
@@ -225,6 +245,9 @@ fn main() -> Result<()> {
         Some(Command::Compile { name }) => cmd_compile(&name.join(" ")),
         Some(Command::Coverage { format, gaps, days, json }) => {
             cmd_coverage(format.as_deref(), gaps, days, json.as_deref())
+        }
+        Some(Command::Calibrate { format, days, min_games, seed, json }) => {
+            cmd_calibrate(&format, days, min_games, seed, json.as_deref())
         }
         Some(Command::Duel {
             deck,
@@ -973,6 +996,81 @@ fn cmd_coverage(
         };
         std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
         println!("\nwrote {}", path.display());
+    }
+    Ok(())
+}
+
+fn cmd_calibrate(
+    format: &str,
+    days: i64,
+    min_games: u32,
+    seed: Option<u64>,
+    json: Option<&std::path::Path>,
+) -> Result<()> {
+    let seed = resolve_seed(seed);
+    let (pool, _) = load_pool(false, false)?;
+    let started = std::time::Instant::now();
+    let mut status = |s: String| println!("{s}");
+    let report = mtg_sim::calibrate::run_calibration(&pool, format, days, min_games, seed, &mut status)?;
+
+    println!(
+        "\ncalibration: {} ({} days): {} tournaments, {} with round data",
+        report.format, report.window_days, report.tournaments, report.tournaments_with_rounds
+    );
+    println!(
+        "matches: {} total, {} used; skipped {} byes, {} unjoined, {} unclassified, \
+         {} malformed, {} mirrors, {} draw-only",
+        report.matches_total,
+        report.matches_used,
+        report.matches_skipped_bye,
+        report.matches_skipped_unjoined,
+        report.matches_skipped_unclassified,
+        report.matches_skipped_malformed,
+        report.matches_skipped_mirror,
+        report.draw_only_matches
+    );
+    println!(
+        "\n{:<44} {:>14} {:>22} {:>22} {:>7}",
+        "pair (A vs B)", "real games", "real WR(A)", "sim WR(A)", "diverge"
+    );
+    for p in &report.pairs {
+        let flags = format!(
+            "{}{}{}",
+            if !p.ci_overlap { " CI!" } else { "" },
+            if p.a_coverage_playable < 0.85 || p.b_coverage_playable < 0.85 { " cov" } else { "" },
+            if p.a_pilot_warning || p.b_pilot_warning { " pilot" } else { "" },
+        );
+        println!(
+            "{:<44} {:>14} {:>6.1}% ({:>4.1}..{:<4.1}) {:>6.1}% ({:>4.1}..{:<4.1}) {:>+6.1}%{}",
+            format!("{} vs {}", p.a, p.b),
+            p.real_games,
+            p.real_wr * 100.0,
+            p.real_ci.0 * 100.0,
+            p.real_ci.1 * 100.0,
+            p.sim_wr * 100.0,
+            p.sim_ci.0 * 100.0,
+            p.sim_ci.1 * 100.0,
+            p.divergence * 100.0,
+            flags,
+        );
+    }
+    println!(
+        "\nmean absolute divergence (games-weighted): {:.1} percentage points",
+        report.mean_abs_divergence * 100.0
+    );
+    println!("real-vs-sim correlation across {} pairs: {:.2}", report.pairs.len(), report.correlation);
+    println!("(CI! = intervals disjoint, cov = a side under 85% coverage, pilot = fidelity flag)");
+    println!("\nwhy these numbers wobble, structurally:");
+    for c in &report.caveats {
+        println!("  - {c}");
+    }
+    println!("\n{} games simulated in {:.1}s", report.pairs.iter().map(|p| p.sim_games).sum::<u32>(), started.elapsed().as_secs_f64());
+
+    let saved = mtg_sim::calibrate::save_report(&report)?;
+    println!("saved {}", saved.display());
+    if let Some(path) = json {
+        std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+        println!("wrote {}", path.display());
     }
     Ok(())
 }

@@ -102,6 +102,28 @@ pub struct CacheItem {
     pub tournament: TournamentInfo,
     #[serde(rename = "Decks", default)]
     pub decks: Vec<CacheDeck>,
+    #[serde(rename = "Rounds", default)]
+    pub rounds: Vec<CacheRound>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CacheRound {
+    #[serde(rename = "RoundName", default)]
+    pub name: String,
+    #[serde(rename = "Matches", default)]
+    pub matches: Vec<CacheMatch>,
+}
+
+/// One reported match. `result` is a game-level "W-L-D" triple from
+/// player 1's perspective; byes appear as an empty or "-" player 2.
+#[derive(Debug, Deserialize)]
+pub struct CacheMatch {
+    #[serde(rename = "Player1", default)]
+    pub p1: String,
+    #[serde(rename = "Player2", default)]
+    pub p2: String,
+    #[serde(rename = "Result", default)]
+    pub result: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,17 +187,18 @@ pub struct TournamentDeck {
     pub date_days: i64,
 }
 
-/// Load all decks for a format from the local cache within the window.
-pub fn load_decks(
+/// Walk every cached tournament JSON for a format within the window,
+/// handing each parsed item (with its date) to the callback.
+fn walk_cache(
     dir: &Path,
     format: &str,
     window_days: i64,
-) -> Result<Vec<TournamentDeck>, SourceError> {
+    f: &mut dyn FnMut(i64, CacheItem),
+) -> Result<(), SourceError> {
     let cutoff = today_days() - window_days;
-    let mut out = Vec::new();
     let root = dir.join("Tournaments");
     if !root.exists() {
-        return Ok(out);
+        return Ok(());
     }
     let mut stack: Vec<PathBuf> = vec![root];
     while let Some(p) = stack.pop() {
@@ -210,25 +233,64 @@ pub fn load_decks(
             if !matches_format {
                 continue;
             }
-            for d in item.decks {
-                if d.mainboard.is_empty() {
-                    continue;
-                }
-                out.push(TournamentDeck {
-                    main: d
-                        .mainboard
-                        .iter()
-                        .map(|c| (c.card_name.clone(), c.count.min(250) as u8))
-                        .collect(),
-                    side: d
-                        .sideboard
-                        .iter()
-                        .map(|c| (c.card_name.clone(), c.count.min(250) as u8))
-                        .collect(),
-                    date_days: days,
-                });
-            }
+            f(days, item);
         }
     }
+    Ok(())
+}
+
+/// Load all decks for a format from the local cache within the window.
+pub fn load_decks(
+    dir: &Path,
+    format: &str,
+    window_days: i64,
+) -> Result<Vec<TournamentDeck>, SourceError> {
+    let mut out = Vec::new();
+    walk_cache(dir, format, window_days, &mut |days, item| {
+        for d in item.decks {
+            if d.mainboard.is_empty() {
+                continue;
+            }
+            out.push(TournamentDeck {
+                main: d
+                    .mainboard
+                    .iter()
+                    .map(|c| (c.card_name.clone(), c.count.min(250) as u8))
+                    .collect(),
+                side: d
+                    .sideboard
+                    .iter()
+                    .map(|c| (c.card_name.clone(), c.count.min(250) as u8))
+                    .collect(),
+                date_days: days,
+            });
+        }
+    })?;
+    Ok(out)
+}
+
+/// One cached tournament with players, lists, and reported match results.
+/// Player names are only unique within a single tournament, so the
+/// grouping is load-bearing for any join against Rounds.
+pub struct TournamentRecord {
+    pub date_days: i64,
+    pub decks: Vec<CacheDeck>,
+    pub rounds: Vec<CacheRound>,
+}
+
+/// Load whole tournaments (decks plus rounds) for a format in the window.
+pub fn load_tournaments(
+    dir: &Path,
+    format: &str,
+    window_days: i64,
+) -> Result<Vec<TournamentRecord>, SourceError> {
+    let mut out = Vec::new();
+    walk_cache(dir, format, window_days, &mut |days, item| {
+        out.push(TournamentRecord {
+            date_days: days,
+            decks: item.decks,
+            rounds: item.rounds,
+        });
+    })?;
     Ok(out)
 }

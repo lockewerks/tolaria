@@ -73,6 +73,41 @@ fn select<T>(mut items: Vec<T>, selection: MetaSelection, seed: u64) -> (Vec<T>,
     }
 }
 
+/// Sync the tournament decklist cache and archetype rules if stale, then
+/// return (tournament cache dir, rules dir). Shared by the gauntlet loader
+/// and the calibration harness.
+pub fn ensure_meta_sources(
+    days: i64,
+    status: &mut dyn FnMut(String),
+) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
+    let paths = mtg_data::Paths::resolve()?;
+    let agent = mtg_sources::http::agent(&mtg_data::default_user_agent());
+    let meta_dir = paths.meta_dir();
+    let cache_dir = meta_dir.join("fbettega");
+    let rules_dir = meta_dir.join("formatdata");
+    std::fs::create_dir_all(&cache_dir)?;
+
+    if !rules_dir.join("Formats").exists() {
+        status("fetching archetype rules (MTGOFormatData)...".into());
+        mtg_sources::archetypes::fetch_format_rules(&agent, &rules_dir)?;
+    }
+
+    let stamp = meta_dir.join("last-sync");
+    let stale = std::fs::metadata(&stamp)
+        .and_then(|m| m.modified())
+        .map(|t| t.elapsed().map(|e| e.as_secs() > 6 * 3600).unwrap_or(true))
+        .unwrap_or(true);
+    if stale {
+        status("syncing tournament decklists...".into());
+        let mut status_inner = |done: usize, total: usize| {
+            status(format!("syncing tournament decklists... {done}/{total}"));
+        };
+        mtg_sources::tournaments::sync_cache(&agent, &cache_dir, days, &mut status_inner)?;
+        std::fs::write(&stamp, b"ok")?;
+    }
+    Ok((cache_dir, rules_dir))
+}
+
 /// Sync sources and compute the meta gauntlet for a format. Status strings
 /// stream through the callback. The seed pins random archetype draws so a
 /// recorded master seed reproduces the whole gauntlet, not just the games.
@@ -86,7 +121,6 @@ pub fn load_meta(
 ) -> Result<(Vec<SimDeck>, MetaInfo)> {
     let format = mtg_data::Format::parse(format_str)
         .ok_or_else(|| anyhow::anyhow!("unknown format: {format_str}"))?;
-    let paths = mtg_data::Paths::resolve()?;
     let agent = mtg_sources::http::agent(&mtg_data::default_user_agent());
 
     if format == mtg_data::Format::Commander {
@@ -149,29 +183,7 @@ pub fn load_meta(
         return Ok((out, info));
     }
 
-    let meta_dir = paths.meta_dir();
-    let cache_dir = meta_dir.join("fbettega");
-    let rules_dir = meta_dir.join("formatdata");
-    std::fs::create_dir_all(&cache_dir)?;
-
-    if !rules_dir.join("Formats").exists() {
-        status("fetching archetype rules (MTGOFormatData)...".into());
-        mtg_sources::archetypes::fetch_format_rules(&agent, &rules_dir)?;
-    }
-
-    let stamp = meta_dir.join("last-sync");
-    let stale = std::fs::metadata(&stamp)
-        .and_then(|m| m.modified())
-        .map(|t| t.elapsed().map(|e| e.as_secs() > 6 * 3600).unwrap_or(true))
-        .unwrap_or(true);
-    if stale {
-        status("syncing tournament decklists...".into());
-        let mut status_inner = |done: usize, total: usize| {
-            status(format!("syncing tournament decklists... {done}/{total}"));
-        };
-        mtg_sources::tournaments::sync_cache(&agent, &cache_dir, days, &mut status_inner)?;
-        std::fs::write(&stamp, b"ok")?;
-    }
+    let (cache_dir, rules_dir) = ensure_meta_sources(days, status)?;
 
     let rules = mtg_sources::archetypes::load_rules(&rules_dir, format)?;
     let decks = mtg_sources::tournaments::load_decks(&cache_dir, &format.to_string(), days)?;
