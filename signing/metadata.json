@@ -1,8 +1,8 @@
 {
   "Endpoint": "https://eus.codesigning.azure.net",
   "CodeSigningAccountName": "specterpoint",
-  "CertificateProfileName": "lockewerks-public",
-  "_comment": "Azure Trusted Signing, publisher: Locke Werks",
+  "CertificateProfileName": "specterpoint",
+  "_comment": "Azure Trusted Signing, publisher: Specter Point Intelligence, LLC",
   "ExcludeCredentials": [
     "ManagedIdentityCredential",
     "WorkloadIdentityCredential",

@@ -24,7 +24,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "publisher": "Locke Werks",
+    "publisher": "Specter Point Intelligence, LLC",
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "resources": {
       "../../target/release/tolaria.exe": "tolaria.exe"
