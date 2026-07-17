@@ -1,6 +1,7 @@
 //! Simulation harness: matchup scheduling, rayon parallelism, seed
 //! derivation, early stopping, panic isolation.
 
+pub mod coverage;
 pub mod goldfish;
 pub mod meta_loader;
 pub mod sweep;

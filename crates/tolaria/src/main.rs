@@ -66,7 +66,22 @@ enum Command {
         name: Vec<String>,
     },
     /// Compile the entire card pool and print the coverage histogram.
-    Coverage,
+    Coverage {
+        /// Also compute play-weighted coverage of this format's cached
+        /// tournament decklists (the number that actually matters).
+        #[arg(long)]
+        format: Option<String>,
+        /// Show the top-N dropped-clause patterns: the template backlog,
+        /// ranked by played copies when --format is given.
+        #[arg(long)]
+        gaps: Option<usize>,
+        /// Trailing window in days for the tournament cache.
+        #[arg(long, default_value_t = 60)]
+        days: i64,
+        /// Write the full report as JSON.
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
+    },
     /// Goldfish: play against a passive opponent to measure the deck as it
     /// stands (kill turn, consistency). Any deck size.
     Goldfish {
@@ -208,7 +223,9 @@ fn main() -> Result<()> {
         Some(Command::Fetch { force }) => cmd_fetch(force),
         Some(Command::Card { name }) => cmd_card(&name.join(" ")),
         Some(Command::Compile { name }) => cmd_compile(&name.join(" ")),
-        Some(Command::Coverage) => cmd_coverage(),
+        Some(Command::Coverage { format, gaps, days, json }) => {
+            cmd_coverage(format.as_deref(), gaps, days, json.as_deref())
+        }
         Some(Command::Duel {
             deck,
             vs,
@@ -817,20 +834,146 @@ fn cmd_compile(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_coverage() -> Result<()> {
-    let (pool, _) = load_pool(false, false)?;
-    let started = std::time::Instant::now();
-    let stats = mtg_cards::compile_pool(&pool);
-    let total = stats.total() as f64;
-    println!(
-        "compiled {} cards in {:.2}s",
-        stats.total(),
-        started.elapsed().as_secs_f32()
-    );
+fn print_tier_histogram(label: &str, stats: &mtg_cards::CoverageStats) {
+    let total = stats.total().max(1) as f64;
+    println!("{label} ({} cards):", stats.total());
     println!("  full:       {:>6} ({:.1}%)", stats.full, stats.full as f64 / total * 100.0);
     println!("  partial:    {:>6} ({:.1}%)", stats.partial, stats.partial as f64 / total * 100.0);
     println!("  proxy:      {:>6} ({:.1}%)", stats.proxy, stats.proxy as f64 / total * 100.0);
-    println!("  unplayable: {:>6} ({:.1}%)", stats.unplayable, stats.unplayable as f64 / total * 100.0);
+    println!(
+        "  unplayable: {:>6} ({:.1}%)",
+        stats.unplayable,
+        stats.unplayable as f64 / total * 100.0
+    );
+}
+
+fn cmd_coverage(
+    format: Option<&str>,
+    gaps: Option<usize>,
+    days: i64,
+    json: Option<&std::path::Path>,
+) -> Result<()> {
+    let (pool, _) = load_pool(false, false)?;
+    let started = std::time::Instant::now();
+    let comp = mtg_cards::compile_pool_detailed(&pool, |_| true);
+    println!("compiled {} cards in {:.2}s", comp.stats.total(), started.elapsed().as_secs_f32());
+    print_tier_histogram("whole pool", &comp.stats);
+
+    // Format-legal subset of the pool, when asked.
+    let format_stats = match format.and_then(mtg_data::Format::parse) {
+        Some(f) => {
+            let sub = mtg_cards::compile_pool_detailed(&pool, |c| c.legalities.is_legal(f));
+            println!();
+            print_tier_histogram(&format!("legal in {f}"), &sub.stats);
+            Some(sub.stats)
+        }
+        None => None,
+    };
+
+    // Play-weighted coverage from the cached tournament decklists: the
+    // honest headline. Printed beside the pool number, never instead of it.
+    let meta = match format {
+        Some(f) => {
+            let m = mtg_sim::coverage::meta_coverage(&pool, f, days)?;
+            println!(
+                "\nas played in {} ({} decks, last {} days): {} card-slots",
+                m.format, m.decks, m.window_days, m.total_copies
+            );
+            println!(
+                "  meta coverage: {:.1}% full / {:.1}% playable (copies-weighted)",
+                m.full_frac() * 100.0,
+                m.playable_frac() * 100.0
+            );
+            if m.unresolved_copies > 0 {
+                let line = format!(
+                    "  unresolved names: {} copies ({:.1}%)",
+                    m.unresolved_copies,
+                    m.unresolved_frac() * 100.0
+                );
+                if m.unresolved_frac() > 0.02 {
+                    println!("{line}  <- over 2%, treat the meta numbers with suspicion");
+                } else {
+                    println!("{line}");
+                }
+            }
+            println!("\n  most-played cards below Full:");
+            for g in m.top_card_gaps.iter().take(12) {
+                println!("    {:>6} copies  {:<10} {}", g.copies, g.tier, g.name);
+            }
+            Some(m)
+        }
+        None => None,
+    };
+
+    // The ranked template backlog.
+    let pool_gaps = gaps.map(|n| {
+        let all = mtg_cards::gaps::aggregate_gaps(&pool, &comp);
+        println!("\ntop dropped-clause patterns ({} distinct):", all.len());
+        match &meta {
+            Some(m) => {
+                println!("  {:>6}  {:>11}  pattern", "cards", "meta copies");
+                for g in m.clause_gaps.iter().take(n) {
+                    println!("  {:>6}  {:>11}  {}", g.cards, g.meta_copies, g.pattern);
+                    println!("          e.g. {}", g.example_cards.join(", "));
+                }
+            }
+            None => {
+                println!("  {:>6}  pattern", "cards");
+                for g in all.iter().take(n) {
+                    println!("  {:>6}  {}", g.cards, g.pattern);
+                    println!("          e.g. {}", g.example_cards.join(", "));
+                }
+            }
+        }
+        all
+    });
+
+    if let Some(path) = json {
+        #[derive(serde::Serialize)]
+        struct Tiers {
+            full: usize,
+            partial: usize,
+            proxy: usize,
+            unplayable: usize,
+        }
+        #[derive(serde::Serialize)]
+        struct GapRow {
+            pattern: String,
+            cards: u32,
+            example_cards: Vec<String>,
+            example_text: String,
+        }
+        #[derive(serde::Serialize)]
+        struct Report {
+            pool: Tiers,
+            format_pool: Option<Tiers>,
+            meta: Option<mtg_sim::coverage::MetaCoverage>,
+            pool_gaps: Option<Vec<GapRow>>,
+        }
+        let tiers = |s: &mtg_cards::CoverageStats| Tiers {
+            full: s.full,
+            partial: s.partial,
+            proxy: s.proxy,
+            unplayable: s.unplayable,
+        };
+        let report = Report {
+            pool: tiers(&comp.stats),
+            format_pool: format_stats.as_ref().map(tiers),
+            meta,
+            pool_gaps: pool_gaps.map(|v| {
+                v.into_iter()
+                    .map(|g| GapRow {
+                        pattern: g.pattern,
+                        cards: g.cards,
+                        example_cards: g.example_cards,
+                        example_text: g.example_text,
+                    })
+                    .collect()
+            }),
+        };
+        std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+        println!("\nwrote {}", path.display());
+    }
     Ok(())
 }
 

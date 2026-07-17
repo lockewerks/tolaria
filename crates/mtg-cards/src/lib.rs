@@ -2,6 +2,7 @@
 //! override registry, coverage grading, compiled cache.
 
 pub mod compiler;
+pub mod gaps;
 pub mod templates;
 pub mod text;
 

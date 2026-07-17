@@ -3811,6 +3811,7 @@ dependencies = [
  "mtg-sources",
  "mtg-stats",
  "rand",
+ "serde",
  "serde_json",
 ]
 
