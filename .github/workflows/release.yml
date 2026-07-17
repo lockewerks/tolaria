@@ -48,10 +48,16 @@ jobs:
           Copy-Item "$extract\bin\x64\*" $dest -Force
           if (-not (Test-Path (Join-Path $dest 'Azure.CodeSigning.Dlib.dll'))) { throw 'dlib missing' }
 
-      - name: UI dependencies
+      # The UI bundle must exist before cargo builds the desktop crate:
+      # tauri's generate_context! embeds frontendDist at compile time.
+      - name: UI dependencies and bundle
         shell: pwsh
         working-directory: crates/tolaria-desktop/ui
-        run: npm ci
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "ui build failed" }
 
       # Sequential: the desktop crate's build script validates that the
       # bundled CLI resource exists, so the CLI must be fully linked first.
