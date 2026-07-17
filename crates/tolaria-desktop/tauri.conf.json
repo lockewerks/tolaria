@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "identifier": "gg.modusimagery.tolaria",
   "build": {
-    "frontendDist": "ui/dist"
+    "frontendDist": "ui/dist",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -21,6 +22,18 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Locke Werks",
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "resources": {
+      "../../target/release/tolaria.exe": "tolaria.exe"
+    },
+    "windows": {
+      "signCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/sign.ps1 %1",
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }

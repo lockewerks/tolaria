@@ -218,6 +218,18 @@ MTGA exports (`4 Lightning Bolt (M11) 133` with `Deck`, `Sideboard`,
 sideboard), and plain lists (`4x Lightning Bolt`). Comment lines start with
 `#` or `//`. Sideboards are parsed and ignored: simulations are game one.
 
+## Releasing
+
+Push a `v*` tag and GitHub Actions builds, signs (Azure Trusted Signing,
+publisher Locke Werks), and publishes the NSIS installer plus standalone
+signed binaries with SHA256 sums. The workflow needs three repository
+secrets for the signing service principal: `AZURE_TENANT_ID`,
+`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. Validate without publishing via
+the workflow's manual dispatch. Local signing: set the same three
+environment variables, then `scripts\sign.ps1 <file>`; local installer:
+`ui\node_modules\.bin\tauri.cmd build` from `crates\tolaria-desktop`
+(set `TOLARIA_SKIP_SIGN=1` to build unsigned).
+
 ## Data sources and thanks
 
 Card data from [Scryfall](https://scryfall.com). Tournament decklists from
