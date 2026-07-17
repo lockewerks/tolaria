@@ -170,6 +170,9 @@ fn mulligan_phase(gs: &mut GameState, agents: &mut Agents) {
             }
         }
         gs.player_mut(seat).mulligans = taken;
+        if taken > 0 {
+            gs.tracef(move || format!("seat {seat} mulligans to {}", 7 - taken));
+        }
     }
 }
 
@@ -188,8 +191,15 @@ pub fn run_game(
     while gs.over.is_none() {
         gs.turn += 1;
         if gs.turn > gs.cfg.turn_cap {
+            gs.tracef(|| "turn cap reached: game is a draw".to_string());
             gs.over = Some(GameEnd::Draw);
             break;
+        }
+        if gs.trace.is_some() {
+            let life: Vec<String> = gs.players.iter().map(|p| p.life.to_string()).collect();
+            let header =
+                format!("--- turn {}, seat {} active (life {}) ---", gs.turn, gs.active, life.join("/"));
+            gs.tracef(move || header);
         }
         crate::turn::take_turn(&mut gs, agents);
         if gs.over.is_some() {

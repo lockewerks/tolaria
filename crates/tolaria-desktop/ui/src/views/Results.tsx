@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { api } from "../api";
 import {
   GauntletStats,
   MatchupStats,
+  ReplayDto,
   RunResult,
   ci95,
   pct,
@@ -138,7 +140,80 @@ function MatchupTable({
   );
 }
 
-function Drill({ m }: { m: MatchupStats }) {
+function SampleGames({ result, m }: { result: RunResult; m: MatchupStats }) {
+  const [log, setLog] = useState<ReplayDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [openGame, setOpenGame] = useState<number | null>(null);
+  const samples = m.sample_games ?? [];
+  if (!samples.length) return null;
+
+  const idx = result.gauntlet?.matchups.findIndex((x) => x.opponent === m.opponent) ?? 0;
+  const oppList = result.trust?.opponents?.[idx]?.list ?? null;
+  const canReplay =
+    result.kind === "goldfish" ||
+    ((result.kind === "duel" || result.kind === "sweep") && !!result.vs_text) ||
+    (result.kind === "gauntlet" && !!oppList);
+
+  const view = async (game: number) => {
+    if (!result.deck_text) return;
+    setBusy(true);
+    setOpenGame(game);
+    try {
+      const dto = await api.replayGame({
+        mode: result.kind,
+        deck_text: result.deck_text,
+        vs_text: result.vs_text ?? null,
+        opp_list: oppList,
+        format: result.format,
+        seed: result.seed,
+        matchup_index: idx,
+        game,
+      });
+      setLog(dto);
+    } catch (e) {
+      setLog({ summary: `replay failed: ${String(e)}`, lines: [], diverged: false });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="hint">
+        <Tip k="sample-games">sample games</Tip>: reproducible from the seed, replay any of them
+      </div>
+      <div className="sample-rows">
+        {samples.map((sg) => (
+          <button
+            key={sg.game}
+            className="sample-row"
+            disabled={!canReplay || busy}
+            onClick={() => void view(sg.game)}
+          >
+            game #{sg.game}: {sg.outcome} in {sg.turns} turns
+            {canReplay ? " · view log" : " · replay needs the saved lists"}
+          </button>
+        ))}
+      </div>
+      {openGame !== null && log ? (
+        <div className="trace-drawer">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <b>{log.summary}</b>
+            <button className="ghost" onClick={() => setOpenGame(null)}>
+              close
+            </button>
+          </div>
+          {log.diverged ? (
+            <div className="error">this replay diverges from the recorded run (see first line)</div>
+          ) : null}
+          <pre className="trace-log">{log.lines.join("\n")}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Drill({ m, result }: { m: MatchupStats; result: RunResult }) {
   const onPlay = m.on_play_games > 0 ? m.on_play_wins / m.on_play_games : 0.5;
   const drawGames = m.games - m.on_play_games;
   const onDraw = drawGames > 0 ? (m.wins - m.on_play_wins) / drawGames : 0.5;
@@ -201,6 +276,7 @@ function Drill({ m }: { m: MatchupStats }) {
           </div>
         </div>
       ) : null}
+      <SampleGames result={result} m={m} />
     </Panel>
   );
 }
@@ -323,7 +399,7 @@ export function ResultsView({ result }: { result: RunResult | null }) {
           <Panel title="matchups, worst first">
             <ForestPlot stats={g} onPick={(n) => setSelected(n)} selected={selected} />
           </Panel>
-          {sel ? <Drill m={sel} /> : null}
+          {sel ? <Drill m={sel} result={result} /> : null}
           <Panel title="table">
             <MatchupTable g={g} selected={selected} setSelected={setSelected} />
           </Panel>

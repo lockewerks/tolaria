@@ -71,6 +71,31 @@ enum Command {
         #[arg(long)]
         markdown: bool,
     },
+    /// Replay one game with a full event log. Deterministic from the seed:
+    /// pick a game index from a run's sample-games list.
+    Replay {
+        /// Your decklist file.
+        #[arg(long)]
+        deck: std::path::PathBuf,
+        /// The opposing decklist file (omit with --goldfish).
+        #[arg(long)]
+        vs: Option<std::path::PathBuf>,
+        /// Replay a goldfish game (passive opponent) instead of a duel.
+        #[arg(long)]
+        goldfish: bool,
+        /// Master seed the game was run under.
+        #[arg(long)]
+        seed: u64,
+        /// Which game index to replay.
+        #[arg(long, default_value_t = 0)]
+        game: u32,
+        /// Commander rules (turn/decision caps).
+        #[arg(long)]
+        commander: bool,
+        /// Write the log here instead of stdout.
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
     /// Compile the entire card pool and print the coverage histogram.
     Coverage {
         /// Also compute play-weighted coverage of this format's cached
@@ -305,6 +330,9 @@ fn main() -> Result<()> {
             cmd_calibrate(&format, days, min_games, seed, json.as_deref())
         }
         Some(Command::Limits { markdown }) => cmd_limits(markdown),
+        Some(Command::Replay { deck, vs, goldfish, seed, game, commander, out }) => {
+            cmd_replay(&deck, vs.as_deref(), goldfish, seed, game, commander, out.as_deref())
+        }
         Some(Command::Duel {
             deck,
             vs,
@@ -1124,6 +1152,57 @@ fn cmd_coverage(
         };
         std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
         println!("\nwrote {}", path.display());
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_replay(
+    deck: &std::path::Path,
+    vs: Option<&std::path::Path>,
+    goldfish: bool,
+    seed: u64,
+    game: u32,
+    commander: bool,
+    out: Option<&std::path::Path>,
+) -> Result<()> {
+    let (pool, _) = load_pool(false, false)?;
+    let user = mtg_sources::load_deck_file(&pool, deck)?;
+    let user_sim = to_sim_deck(&pool, &user, 1.0);
+    let rules = if commander {
+        mtg_engine::RulesConfig::commander_pod(2)
+    } else {
+        mtg_engine::RulesConfig::duel()
+    };
+    let cfg = mtg_sim::SimConfig { master_seed: seed, rules, ..Default::default() };
+
+    let result = if goldfish {
+        mtg_sim::replay::replay_goldfish_game(&pool, &user_sim, &cfg, game, None)
+    } else {
+        let vs = vs.ok_or_else(|| anyhow::anyhow!("--vs is required unless --goldfish"))?;
+        let opp = mtg_sources::load_deck_file(&pool, vs)?;
+        let opp_sim = to_sim_deck(&pool, &opp, 1.0);
+        mtg_sim::replay::replay_matchup_game(&pool, &user_sim, &opp_sim, &cfg, 0, game, None)
+    };
+
+    let mut log = String::new();
+    log.push_str(&format!(
+        "game {game} at seed {seed} (game seed = splitmix over master ^ matchup ^ game)\n{}\n\n",
+        result.summary
+    ));
+    for line in &result.trace {
+        log.push_str(line);
+        log.push('\n');
+    }
+    if let Some(msg) = &result.panic {
+        log.push_str(&format!("\npanic: {msg}\n"));
+    }
+    match out {
+        Some(path) => {
+            std::fs::write(path, log)?;
+            println!("wrote {}", path.display());
+        }
+        None => print!("{log}"),
     }
     Ok(())
 }

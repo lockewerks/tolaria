@@ -380,6 +380,8 @@ pub fn declare_blockers(gs: &mut GameState, agents: &mut Agents) {
     for a in &combat.attacks {
         if !a.blockers.is_empty() {
             gs.obj_mut(a.attacker).flags |= ObjFlags::BLOCKED;
+            let n = a.blockers.len();
+            gs.tracef(move || format!("attacker is blocked by {n} creature(s)"));
         }
         for &b in &a.blockers {
             gs.obj_mut(b).flags |= ObjFlags::BLOCKING;

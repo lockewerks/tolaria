@@ -7,6 +7,8 @@ import type {
   MetaResponse,
   PoolInfo,
   ProgressPayload,
+  ReplayDto,
+  ReplayRequest,
   RunConfig,
   RunMeta,
   RunResult,
@@ -25,6 +27,7 @@ export const api = {
   listRuns: () => invoke<RunMeta[]>("list_runs"),
   loadRun: (file: string) => invoke<RunResult>("load_run", { file }),
   listLimits: () => invoke<Limit[]>("list_limits"),
+  replayGame: (req: ReplayRequest) => invoke<ReplayDto>("replay_game", { req }),
 };
 
 export function onRunProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {

@@ -147,6 +147,32 @@ export interface MatchupStats {
   win_opp_life_sum: number;
   loss_life_sum: number;
   loss_opp_life_sum: number;
+  turn_cap_draws?: number;
+  decision_cap_draws?: number;
+  sample_games?: SampleGame[];
+}
+
+export interface SampleGame {
+  game: number;
+  outcome: string;
+  turns: number;
+}
+
+export interface ReplayDto {
+  summary: string;
+  lines: string[];
+  diverged: boolean;
+}
+
+export interface ReplayRequest {
+  mode: string;
+  deck_text: string;
+  vs_text?: string | null;
+  opp_list?: [string, number][] | null;
+  format: string;
+  seed: number;
+  matchup_index: number;
+  game: number;
 }
 
 export const signed = (x: number, digits = 1) => `${x >= 0 ? "+" : ""}${x.toFixed(digits)}`;

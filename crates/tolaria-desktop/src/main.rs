@@ -952,6 +952,91 @@ struct LimitDto {
     impact: String,
 }
 
+#[derive(Deserialize)]
+struct ReplayRequest {
+    mode: String,
+    deck_text: String,
+    /// Duel/sweep opponent decklist text.
+    vs_text: Option<String>,
+    /// Gauntlet opponent list (name, count) rebuilt from the trust report,
+    /// so replay does not depend on refetching a drifting meta.
+    opp_list: Option<Vec<(String, u8)>>,
+    format: String,
+    seed: u64,
+    matchup_index: u64,
+    game: u32,
+}
+
+#[derive(Serialize, Clone)]
+struct ReplayDto {
+    summary: String,
+    lines: Vec<String>,
+    diverged: bool,
+}
+
+/// Build a SimDeck from a (name, count) list by pool lookup.
+fn sim_deck_from_list(pool: &CardPool, name: &str, list: &[(String, u8)]) -> SimDeck {
+    let cards: Vec<(mtg_data::CardId, u8)> = list
+        .iter()
+        .filter_map(|(n, c)| pool.lookup(n).map(|id| (id, *c)))
+        .collect();
+    let creatures = mtg_sim::meta_loader::creature_count(pool, &cards);
+    SimDeck {
+        name: name.to_string(),
+        cards,
+        commander: None,
+        meta_share: 1.0,
+        pilot_warning: mtg_sources::meta::pilot_warning(creatures),
+    }
+}
+
+#[tauri::command]
+async fn replay_game(state: State<'_, AppState>, req: ReplayRequest) -> Result<ReplayDto, String> {
+    let slot = state.pool.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (pool, _) = get_pool(&slot)?;
+        let uparsed = mtg_sources::parse_deck_text(&req.deck_text);
+        let (ures, _) = mtg_sources::deck_import::resolve_deck_lossy(&pool, &uparsed, "deck");
+        let ures = ures.ok_or("no cards resolved from your decklist")?;
+        let user = to_sim_deck(&pool, &ures);
+        let is_commander = req.format.eq_ignore_ascii_case("commander") || req.mode == "pod";
+        let rules = if is_commander {
+            mtg_engine::RulesConfig::commander_pod(2)
+        } else {
+            mtg_engine::RulesConfig::duel()
+        };
+        let cfg = mtg_sim::SimConfig { master_seed: req.seed, rules, ..Default::default() };
+
+        let result = match req.mode.as_str() {
+            "goldfish" => mtg_sim::replay::replay_goldfish_game(&pool, &user, &cfg, req.game, None),
+            "duel" | "sweep" => {
+                let vs = req.vs_text.ok_or("no opponent decklist for this replay")?;
+                let vparsed = mtg_sources::parse_deck_text(&vs);
+                let (vres, _) =
+                    mtg_sources::deck_import::resolve_deck_lossy(&pool, &vparsed, "opponent");
+                let vres = vres.ok_or("no cards resolved from the opponent decklist")?;
+                let opp = to_sim_deck(&pool, &vres);
+                mtg_sim::replay::replay_matchup_game(&pool, &user, &opp, &cfg, 0, req.game, None)
+            }
+            "gauntlet" => {
+                let list = req.opp_list.ok_or("no opponent list recorded for this run")?;
+                let opp = sim_deck_from_list(&pool, "opponent", &list);
+                mtg_sim::replay::replay_matchup_game(
+                    &pool, &user, &opp, &cfg, req.matchup_index, req.game, None,
+                )
+            }
+            m => return Err(format!("replay is not supported for {m} runs")),
+        };
+        Ok(ReplayDto {
+            summary: result.summary,
+            diverged: result.trace.first().map(|l| l.contains("diverges")).unwrap_or(false),
+            lines: result.trace,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn list_limits() -> Vec<LimitDto> {
     mtg_sim::limits::all_limits()
@@ -992,7 +1077,8 @@ fn main() {
             cancel_run,
             list_runs,
             load_run,
-            list_limits
+            list_limits,
+            replay_game
         ])
         .run(tauri::generate_context!())
         .expect("tolaria desktop failed to start");

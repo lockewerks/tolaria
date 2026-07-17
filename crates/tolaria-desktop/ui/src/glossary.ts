@@ -208,6 +208,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     text: "Everything the result knows about its own reliability: coverage with tier counts for both sides, pilot flags, seed, confidence-interval method, compiler version, panics, and cap-forced draws. The same manifest rides every export, so a saved run confesses its weaknesses wherever it travels.",
     group: "Coverage",
   },
+  "sample-games": {
+    title: "Sample games",
+    text: "A few representative games kept from the run by index: first win, first loss, first panic, longest. Because every game is a pure function of the seed, any of them replays exactly, with a full turn-by-turn event log, so you can watch what the pilot actually did instead of trusting the aggregate.",
+    group: "Results",
+  },
   "warn-low_opp_coverage": {
     title: "Low opponent coverage",
     text: "The opponents' lists are under 85% modeled on average. Cards the engine cannot play are dead slots for them, so your win rate reads higher than it should.",
