@@ -2074,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-ai"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mtg-data",
  "mtg-engine",
@@ -2084,7 +2084,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-cards"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "indexmap 2.14.0",
@@ -2099,7 +2099,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-data"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "directories",
  "flate2",
@@ -2113,7 +2113,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitflags 2.13.1",
  "indexmap 2.14.0",
@@ -2128,7 +2128,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-ir"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitflags 2.13.1",
  "serde",
@@ -2137,7 +2137,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-sim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "criterion",
@@ -2159,7 +2159,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-sources"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "directories",
  "flate2",
@@ -2174,7 +2174,7 @@ dependencies = [
 
 [[package]]
 name = "mtg-stats"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4053,7 +4053,7 @@ dependencies = [
 
 [[package]]
 name = "tolaria"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4072,7 +4072,7 @@ dependencies = [
 
 [[package]]
 name = "tolaria-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "mtg-cards",
