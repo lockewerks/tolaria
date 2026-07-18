@@ -4,6 +4,13 @@ export interface PoolInfo {
   source: string;
 }
 
+export interface UpdateStatus {
+  current: string;
+  latest: string | null;
+  update_available: boolean;
+  releases_url: string;
+}
+
 export interface Limit {
   id: string;
   category: string;

@@ -12,6 +12,7 @@ import type {
   RunConfig,
   RunMeta,
   RunResult,
+  UpdateStatus,
 } from "./types";
 
 export const api = {
@@ -28,6 +29,8 @@ export const api = {
   loadRun: (file: string) => invoke<RunResult>("load_run", { file }),
   listLimits: () => invoke<Limit[]>("list_limits"),
   replayGame: (req: ReplayRequest) => invoke<ReplayDto>("replay_game", { req }),
+  checkUpdate: () => invoke<UpdateStatus>("check_update"),
+  openReleasesPage: () => invoke<void>("open_releases_page"),
 };
 
 export function onRunProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {

@@ -129,7 +129,19 @@ analysis with a best-fit recommendation, run configurator for all five
 modes, live progress with cancel, results with charts and per-matchup
 drill-ins (game length, end reasons, mulligans, victory margins), meta
 browser, persisted run history, dwell tooltips on every term, and a
-glossary for anything cryptic. Build it with:
+glossary for anything cryptic.
+
+Every result carries a trust report: coverage with tier counts for both
+sides, the pilot-fidelity grade, seed, panics, cap-forced draws, and the
+exact clauses the compiler dropped from your deck. Caveats show up as
+plain-language warnings that say which way each one bends the number.
+Any matchup drill lists a few reproducible sample games; click one and it
+replays with a full turn-by-turn log, so you can watch what the pilot
+actually did instead of trusting the average. The glossary ends with a
+"what the simulator does not model" section: every known divergence from
+real Magic, in writing, because an honest tool ships its own errata. And
+when a newer signed release lands on the repo, a banner offers to take you
+to the download page. Build it with:
 
 ```
 cd crates/tolaria-desktop/ui && npm install && npm run build
@@ -146,7 +158,7 @@ to each other. The CLI below is the headless interface.
 Card data downloads automatically on first use and refreshes when Scryfall
 publishes a new bulk (about every 12 hours). Tournament data syncs at most
 once every six hours. Everything caches under the platform data directory
-(`%LOCALAPPDATA%\modusimagery\Tolaria` on Windows).
+(`%APPDATA%\modusimagery\Tolaria` on Windows).
 
 Formats: `standard`, `pioneer`, `modern`, `legacy`, `vintage`, `pauper`,
 `commander` (also `edh`).

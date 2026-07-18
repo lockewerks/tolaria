@@ -664,3 +664,43 @@ button.ghost {
   cursor: pointer;
   font-size: 12px;
 }
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 9px 13px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 8px;
+  background: rgba(57, 135, 229, 0.12);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.update-get {
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.update-dismiss {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink-2);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}

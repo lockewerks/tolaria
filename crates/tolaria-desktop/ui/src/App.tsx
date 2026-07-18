@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, onRunDone, onRunError, onRunProgress } from "./api";
-import { DeckFile, DeckInfo, PoolInfo, ProgressPayload, RunMeta, RunResult } from "./types";
+import { DeckFile, DeckInfo, PoolInfo, ProgressPayload, RunMeta, RunResult, UpdateStatus } from "./types";
 import { DecksView } from "./views/Decks";
 import { RunView } from "./views/Run";
 import { ResultsView } from "./views/Results";
@@ -22,6 +22,7 @@ export default function App() {
   const [runError, setRunError] = useState("");
   const [result, setResult] = useState<RunResult | null>(null);
   const [runs, setRuns] = useState<RunMeta[]>([]);
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
 
   const refreshDecks = () => void api.listDecks().then(setDecks).catch(() => {});
   const refreshRuns = () => void api.listRuns().then(setRuns).catch(() => {});
@@ -30,6 +31,16 @@ export default function App() {
     api.poolStatus().then(setPool).catch((e) => setPoolErr(String(e)));
     refreshDecks();
     refreshRuns();
+    // Non-blocking update poll; a dismissed version is remembered so the
+    // banner does not reappear until a newer one ships.
+    void api
+      .checkUpdate()
+      .then((u) => {
+        if (u.update_available && localStorage.getItem("dismissedUpdate") !== u.latest) {
+          setUpdate(u);
+        }
+      })
+      .catch(() => {});
     const subs = [
       onRunProgress((p) => {
         setRunning(true);
@@ -99,6 +110,27 @@ export default function App() {
         </div>
       </div>
       <div className="main">
+        {update ? (
+          <div className="update-banner">
+            <span>
+              Tolaria {update.latest} is available (you have {update.current}).
+            </span>
+            <span className="update-actions">
+              <button className="update-get" onClick={() => void api.openReleasesPage()}>
+                get it
+              </button>
+              <button
+                className="update-dismiss"
+                onClick={() => {
+                  if (update.latest) localStorage.setItem("dismissedUpdate", update.latest);
+                  setUpdate(null);
+                }}
+              >
+                later
+              </button>
+            </span>
+          </div>
+        ) : null}
         {view === "decks" ? (
           <DecksView
             decks={decks}

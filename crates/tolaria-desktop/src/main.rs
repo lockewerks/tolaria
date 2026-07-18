@@ -1037,6 +1037,105 @@ async fn replay_game(state: State<'_, AppState>, req: ReplayRequest) -> Result<R
     .map_err(|e| e.to_string())?
 }
 
+// Update check: the app is distributed as signed releases on a public
+// GitHub repo, so a lightweight "is there a newer tag" poll is enough. No
+// auto-download; the user is sent to the releases page to install.
+
+const RELEASES_URL: &str = "https://github.com/lockewerks/tolaria/releases";
+const LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/lockewerks/tolaria/releases/latest";
+
+#[derive(Serialize, Clone)]
+struct UpdateStatus {
+    current: String,
+    latest: Option<String>,
+    update_available: bool,
+    releases_url: String,
+}
+
+#[derive(Deserialize)]
+struct GhRelease {
+    tag_name: String,
+}
+
+/// Parse "v1.2.3" (or "1.2.3", with an optional prerelease suffix on the
+/// patch) into a comparable tuple. None when it is not X.Y.Z shaped.
+fn parse_semver(v: &str) -> Option<(u32, u32, u32)> {
+    let v = v.trim().trim_start_matches('v');
+    let mut it = v.split('.');
+    let major = it.next()?.parse().ok()?;
+    let minor = it.next()?.parse().ok()?;
+    let patch_raw = it.next().unwrap_or("0");
+    let digits: String = patch_raw.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let patch = digits.parse().unwrap_or(0);
+    Some((major, minor, patch))
+}
+
+/// Poll GitHub for the latest release tag and compare to the running
+/// version. Any network or parse failure yields "no update", never an
+/// error: the check must never block or nag on a bad connection.
+#[tauri::command]
+async fn check_update() -> UpdateStatus {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    // The GitHub poll is a blocking ureq call with multi-second timeouts.
+    // Run it off the event-loop thread, like every other I/O command here,
+    // so an offline or firewalled machine can never freeze the window at
+    // startup waiting on api.github.com.
+    let latest_tag = tauri::async_runtime::spawn_blocking(|| {
+        let agent = mtg_sources::http::agent(&mtg_data::default_user_agent());
+        mtg_sources::http::get_json::<GhRelease>(&agent, LATEST_RELEASE_API)
+            .ok()
+            .map(|r| r.tag_name)
+    })
+    .await
+    .ok()
+    .flatten();
+    let update_available = match (latest_tag.as_deref().and_then(parse_semver), parse_semver(&current))
+    {
+        (Some(latest), Some(cur)) => latest > cur,
+        _ => false,
+    };
+    UpdateStatus {
+        current,
+        latest: latest_tag,
+        update_available,
+        releases_url: RELEASES_URL.to_string(),
+    }
+}
+
+/// Open the releases page in the default browser. The URL is a fixed
+/// constant, never caller-supplied, so there is no injection surface.
+#[tauri::command]
+fn open_releases_page() -> Result<(), String> {
+    // Windows-only distribution; the shell "start" verb hands the URL to
+    // the default browser. The empty "" is start's title argument.
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", RELEASES_URL])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::parse_semver;
+
+    #[test]
+    fn parses_and_orders() {
+        assert_eq!(parse_semver("v0.2.0"), Some((0, 2, 0)));
+        assert_eq!(parse_semver("0.2.0"), Some((0, 2, 0)));
+        assert_eq!(parse_semver("v1.0.0-rc1"), Some((1, 0, 0)));
+        assert_eq!(parse_semver("v0.2"), Some((0, 2, 0)));
+        assert_eq!(parse_semver("garbage"), None);
+        assert_eq!(parse_semver(""), None);
+        // Newer tag beats the running version; equal is not "newer".
+        assert!(parse_semver("v0.2.0") > parse_semver("v0.1.0"));
+        assert!(parse_semver("v0.10.0") > parse_semver("v0.9.0"));
+        assert!(!(parse_semver("v0.2.0") > parse_semver("v0.2.0")));
+        assert!(!(parse_semver("v0.1.0") > parse_semver("v0.2.0")));
+    }
+}
+
 #[tauri::command]
 fn list_limits() -> Vec<LimitDto> {
     mtg_sim::limits::all_limits()
@@ -1078,7 +1177,9 @@ fn main() {
             list_runs,
             load_run,
             list_limits,
-            replay_game
+            replay_game,
+            check_update,
+            open_releases_page
         ])
         .run(tauri::generate_context!())
         .expect("tolaria desktop failed to start");
