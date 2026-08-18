@@ -1,4 +1,18 @@
+<div align="center">
+
+<img src="assets/tolaria.ico" width="96" alt="Tolaria">
+
 # Tolaria
+
+**A desktop laboratory for Magic: The Gathering decks. Thousands of games against the real meta, with error bars.**
+
+[![release](https://img.shields.io/github/v/release/lockewerks/tolaria?style=flat-square&color=d6262a)](https://github.com/lockewerks/tolaria/releases)
+[![license](https://img.shields.io/badge/license-GPLv3-d6262a?style=flat-square)](LICENSE)
+![platform](https://img.shields.io/badge/platform-Windows%2011-d6262a?style=flat-square)
+
+</div>
+
+---
 
 A desktop laboratory for Magic: The Gathering decks. Hand it your decklist
 and it plays a few thousand games against the actual meta while you're
