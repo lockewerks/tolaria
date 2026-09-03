@@ -27,9 +27,19 @@ pub enum DataError {
     Offline(String),
 }
 
+/// User-Agent sent to Scryfall.
+///
+/// Scryfall asks callers to identify themselves and offer a way to be reached.
+/// The repository URL does that on its own, so it is the default. Set
+/// `TOLARIA_CONTACT` to add an email or other address for a deployment that
+/// wants one.
 pub fn default_user_agent() -> String {
-    format!(
-        "Tolaria/{} (+https://github.com/lockewerks/tolaria; modusimagery@gmail.com)",
-        env!("CARGO_PKG_VERSION")
-    )
+    const REPO: &str = "https://github.com/lockewerks/tolaria";
+    let version = env!("CARGO_PKG_VERSION");
+    match std::env::var("TOLARIA_CONTACT") {
+        Ok(contact) if !contact.trim().is_empty() => {
+            format!("Tolaria/{} (+{}; {})", version, REPO, contact.trim())
+        }
+        _ => format!("Tolaria/{} (+{})", version, REPO),
+    }
 }
