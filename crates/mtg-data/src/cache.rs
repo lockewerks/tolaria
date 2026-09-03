@@ -16,12 +16,24 @@ pub struct Paths {
     pub config_dir: PathBuf,
 }
 
+/// Reverse-DNS parts handed to `ProjectDirs`. These decide where decks, runs
+/// and the card cache live, so changing them strands an existing install.
+const QUALIFIER: &str = "gg";
+const ORGANIZATION: &str = "lockewerks";
+const APPLICATION: &str = "Tolaria";
+
+/// The organization these directories used before, kept only so an existing
+/// install can be moved across once. Do not use it for anything else.
+const LEGACY_ORGANIZATION: &str = "modusimagery";
+
 impl Paths {
     pub fn resolve() -> Result<Paths, DataError> {
-        let dirs = directories::ProjectDirs::from("gg", "modusimagery", "Tolaria")
+        let dirs = directories::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
             .ok_or(DataError::NoDataDir)?;
+        let data_dir = dirs.data_dir().to_path_buf();
+        adopt_legacy_data_dir(&data_dir);
         Ok(Paths {
-            data_dir: dirs.data_dir().to_path_buf(),
+            data_dir,
             config_dir: dirs.config_dir().to_path_buf(),
         })
     }
@@ -45,6 +57,32 @@ impl Paths {
     pub fn commander_dir(&self) -> PathBuf {
         self.data_dir.join("commander")
     }
+}
+
+/// Move the pre-rename data directory into place the first time we run under
+/// the new organization name. Decks and run history live here and are not
+/// recoverable by re-downloading, so losing them would be a real cost to an
+/// existing install. Best effort: if anything about the move fails the caller
+/// simply starts with an empty directory, which is the same position a new
+/// install is in.
+fn adopt_legacy_data_dir(new_dir: &std::path::Path) {
+    if new_dir.exists() {
+        return;
+    }
+    let legacy = match directories::ProjectDirs::from(QUALIFIER, LEGACY_ORGANIZATION, APPLICATION) {
+        Some(dirs) => dirs,
+        None => return,
+    };
+    let legacy_dir = legacy.data_dir();
+    if !legacy_dir.exists() || legacy_dir == new_dir {
+        return;
+    }
+    if let Some(parent) = new_dir.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
+    }
+    let _ = std::fs::rename(legacy_dir, new_dir);
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -172,7 +172,7 @@ to each other. The CLI below is the headless interface.
 Card data downloads automatically on first use and refreshes when Scryfall
 publishes a new bulk (about every 12 hours). Tournament data syncs at most
 once every six hours. Everything caches under the platform data directory
-(`%APPDATA%\modusimagery\Tolaria` on Windows).
+(`%APPDATA%\lockewerks\Tolaria` on Windows).
 
 Formats: `standard`, `pioneer`, `modern`, `legacy`, `vintage`, `pauper`,
 `commander` (also `edh`).
